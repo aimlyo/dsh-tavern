@@ -1,3 +1,55 @@
+diff --git a/lib/client.js b/lib/client.js
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -10649,6 +10649,11 @@ window.__ModuleLoader__.load({
+ 			sidechatDispose: (childId) => call("sidechat.dispose", { childId }),
+ 			/** Live state + agent identity (provider/model/preset) of a thread. */
+ 			sidechatInfo: (childId) => call("sidechat.info", { childId }),
++			/** One aligned history page of a thread (this plugin's own route). */
++			sidechatHistory: (childId, paging, signal) => call("sidechat.history", {
++				childId,
++				...paging
++			}, signal),
+ 			/** The effective terminal shell and its display name (plugin-global). */
+ 			shellGet: () => call("shell.get", {}),
+ 			/** Read the side card preferences (plugin-global, no session scope). */
+@@ -16618,26 +16623,25 @@ Mode: this is a continuable side conversation. Your answers stay in this side th
+ 				try {
+ 					if (cache.seedBoundary === null) {
+ 						const walk = await collectOwnEvents(async (beforeSeq) => {
+-							const response = await ctx.connection.api.sessions.history({
+-								sessionId: childId,
++							const page = await api.sidechatHistory(childId, {
+ 								maxMessages: WALK_PAGE_EVENTS,
+ 								...beforeSeq === void 0 ? {} : { beforeSeq }
+ 							}, controller.signal);
+-							if (!response.result.ok) throw new Error("history walk failed");
+-							return response.result.value.events;
++							return page.events;
+ 						});
+ 						cache.seedBoundary = walk.seedBoundary;
+ 						cache.entries = mergeBySeq(cache.entries, walk.entries);
+ 					} else {
+-						const response = await ctx.connection.api.sessions.history({
+-							sessionId: childId,
+-							maxMessages: PAGE_MESSAGES
+-						}, controller.signal);
+-						if (!response.result.ok) return;
+-						cache.entries = mergeBySeq(cache.entries, response.result.value.events);
++						const page = await api.sidechatHistory(childId, { maxMessages: PAGE_MESSAGES }, controller.signal);
++						cache.entries = mergeBySeq(cache.entries, page.events);
+ 					}
+ 					setRevision((value) => value + 1);
+-				} catch {}
++				} catch (cause) {
++					const message = cause instanceof Error ? cause.message : String(cause);
++					/* The polling loop aborts its own previous request, and call() wraps
++					* that DOMException into a network error — do not report those. */
++					if (cause?.name !== "AbortError" && !/abort/i.test(message)) setError(message);
++				}
+ 			}, [ctx]);
+ 			/** The thread header badge pull (live state + preset/model identity). */
+ 			const fetchInfo = (0, react.useCallback)(async (childId) => {
 diff --git a/lib/index.js b/lib/index.js
 --- a/lib/index.js
 +++ b/lib/index.js
@@ -43,7 +95,37 @@ diff --git a/lib/index.js b/lib/index.js
  				if (activity.text !== void 0 || activity.tool !== void 0) live[entry.id] = activity;
  			} catch {}
  		}
-@@ -3544,8 +3555,8 @@ function buildSidechatApi(ctx) {
+@@ -3491,6 +3502,29 @@ async function composePersistedSetup(ctx, childId) {
+ 		await presets.mount(agentCtx, resolved.id);
+ 	};
+ }
++/** Agent options for a COLD thread resume. DSH 0.1.2-rc.1 restores no
++ *  provider/model from the persisted record (its session header keeps only
++ *  agentPreset), so a resumed thread would end every turn with "has no
++ *  provider/model". The thread recorded both at creation — read them back. */
++async function persistedAgentOptions(ctx, childId) {
++	const persistence = ctx.get("sessionPersistence");
++	if (persistence === void 0) return void 0;
++	try {
++		const inspected = await persistence.inspect(childId);
++		const event = inspected.events.find((candidate) => candidate.type === "subagent/descriptor");
++		const data = event?.data;
++		if (data === null || typeof data !== "object") return void 0;
++		const provider = data.agentProvider;
++		const model = data.agentModel;
++		if (typeof provider !== "string" || typeof model !== "string") return void 0;
++		return {
++			provider,
++			model
++		};
++	} catch {
++		return void 0;
++	}
++}
+ /** One text-block prompt (the thread boundary + question, or a follow-up). */
+ function textPrompt(text) {
+ 	return [{
+@@ -3544,8 +3578,8 @@ function buildSidechatApi(ctx) {
  			const parent = liveThreadAgent(ctx, sessionId);
  			if (parent === void 0) throw new SidebarError("sidechat-error", `parent session "${sessionId}" is not running`, 409);
  			const parentSession = parent.session;
@@ -54,7 +136,21 @@ diff --git a/lib/index.js b/lib/index.js
  			const childId = `session-${randomUUID()}`;
  			const label = question === "" ? SIDE_NEW_THREAD_TITLE : sideLabel(question);
  			const descriptor = snapshotSubagentDescriptor({
-@@ -3624,7 +3635,7 @@ function buildSidechatApi(ctx) {
+@@ -3613,10 +3647,12 @@ function buildSidechatApi(ctx) {
+ 				const agents = ctx.get("agents");
+ 				if (agents?.resume === void 0) throw new SidebarError("sidechat-error", "the agents service is unavailable", 503);
+ 				const setup = await composePersistedSetup(ctx, childId);
++				const agentOptions = await persistedAgentOptions(ctx, childId);
+ 				try {
+ 					const handle = await agents.resume({
+ 						resumeSessionId: childId,
+-						setup
++						setup,
++						...agentOptions === void 0 ? {} : { agentOptions }
+ 					});
+ 					threadDisposers.set(childId, () => handle.dispose());
+ 					agent = handle.agent;
+@@ -3624,7 +3660,7 @@ function buildSidechatApi(ctx) {
  					throw new SidebarError("sidechat-error", `thread resume failed: ${error instanceof Error ? error.message : String(error)}`, 500);
  				}
  			}
@@ -63,7 +159,67 @@ diff --git a/lib/index.js b/lib/index.js
  			else {
  				const parts = [SIDE_BOUNDARY_PROMPT];
  				const snapshot = pendingSnapshots.get(childId);
-@@ -4130,7 +4141,7 @@ function apply(ctx, config) {
+@@ -3655,6 +3691,59 @@ function buildSidechatApi(ctx) {
+ 			}
+ 			return { accepted: true };
+ 		},
++		/** One aligned history page of a side thread, served by this plugin itself.
++		*  DSH 0.1.2-rc.1 exposes no client-visible session-history remote, and its
++		*  session/page needs a throughSeq cursor the client cannot know, so the tab
++		*  reads its transcript here. Mirrors the host's own pagination: the last
++		*  `maxMessages` message groups ending before `beforeSeq`. */
++		"sidechat.history": async (payload) => {
++			const childId = requireString(payload, "childId");
++			const beforeSeq = Number.isSafeInteger(payload.beforeSeq) ? payload.beforeSeq : void 0;
++			const requested = Number.isSafeInteger(payload.maxMessages) && payload.maxMessages > 0 ? payload.maxMessages : 50;
++			const live = liveThreadAgent(ctx, childId);
++			let events;
++			if (live !== void 0) events = sessionLogEvents(live.session);
++			else {
++				const persistence = ctx.get("sessionPersistence");
++				if (persistence === void 0) throw new SidebarError("sidechat-error", "the session persistence service is unavailable", 503);
++				events = (await persistence.inspect(childId)).events;
++			}
++			let end = events.length;
++			if (beforeSeq !== void 0) {
++				const found = events.findIndex((event) => event.seq >= beforeSeq);
++				end = found < 0 ? events.length : found;
++			}
++			let count = 0;
++			let cut = 0;
++			for (let index = end - 1; index >= 0; index--) {
++				const event = events[index];
++				if (event.type !== "user/message" && event.type !== "assistant/message") continue;
++				if (event.surfaceOp !== "append") continue;
++				count += 1;
++				let groupStart = event.seq;
++				const sources = event.sourceEventSeqs;
++				if (Array.isArray(sources)) {
++					for (const source of sources) if (source < groupStart) groupStart = source;
++				}
++				if (count >= requested) {
++					const start = events.findIndex((candidate) => candidate.seq >= groupStart);
++					cut = start < 0 ? 0 : start;
++					break;
++				}
++			}
++			const sliced = events.slice(cut, end);
++			const page = sliced.length > 6000 ? sliced.slice(sliced.length - 6000) : sliced;
++			/* DSH appends a fresh session/end-seed every time the session is
++			* (re)loaded — a cold thread resume adds one at the CURRENT tail. The tab
++			* cuts the transcript at the LAST such marker, so those later markers would
++			* hide the thread's own earlier turns. Only the creation boundary is a
++			* real fork marker: expose that one, keep the rest out of the view. */
++			const firstSeedSeq = events.find((event) => event.type === "session/end-seed")?.seq;
++			return {
++				events: page.filter((event) => event.type !== "session/end-seed" || event.seq === firstSeedSeq).map((event) => ({ event })),
++				hasMore: cut > 0
++			};
++		},
+ 		"sidechat.info": async (payload) => {
+ 			const childId = requireString(payload, "childId");
+ 			const agent = liveThreadAgent(ctx, childId);
+@@ -4130,7 +4219,7 @@ function apply(ctx, config) {
  		}
  	};
  	ctx.inject(["settings"], (sctx) => {
@@ -75,5 +231,11 @@ diff --git a/lib/index.js b/lib/index.js
 diff --git a/package.json b/package.json
 --- a/package.json
 +++ b/package.json
-@@ -48 +48,0 @@
+@@ -45,7 +45,6 @@
+     },
+     "client": {
+       "inject": [
 -        "@deepseek-ai/dsh-client-runtime",
+         "@deepseek-ai/dsh-client-locale",
+         "@deepseek-ai/dsh-client-ui-slots",
+         "@deepseek-ai/dsh-client-ui-conversation",
