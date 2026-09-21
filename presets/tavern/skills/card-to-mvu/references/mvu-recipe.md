@@ -10,7 +10,7 @@
 {"action":"inspect","sourcePath":"cards/原卡.json","name":"原卡 MVU版本"}
 ```
 
-再 apply。下面的版本号和原文仅为示例，必须替换为 inspect 返回的实际值：
+再 apply。下面的版本号、路径和短片段仅为示例，必须来自 inspect 底稿。复制整卡、清理和安装 MVU 都由工具完成：
 
 ```json
 {
@@ -28,7 +28,20 @@
 }
 ```
 
-`cleanup` 路径相对于 inspect 的 card，不带 `/data` 或 `/raw`。删除数组元素时用 inspect 时的原始下标，工具处理下标移动。修改后的文本保持剧情语义；不留下迁移说明。字段包含多个清理位置时，用一次 replace 提交完整原值和整理后的值。
+`cleanup` 路径相对于 inspect 的 card，不带 `/data` 或 `/raw`。删除数组元素时用 inspect 时的原始下标，工具处理下标移动。修改后的文本保持剧情语义；不留下迁移说明。同字段多处清理分别提交小操作；所有操作按修改前底稿定位，工具拒绝重叠范围。
+
+清理长内容的示例（仅用于原卡确有对应内容时）：
+
+```json
+[
+  {"op":"remove","path":"/character_book/entries/3"},
+  {"op":"remove","path":"/extensions/regex_scripts/1"},
+  {"op":"replaceBlock","path":"/first_mes","start":"<旧状态栏>","end":"</旧状态栏>","value":""},
+  {"op":"replaceText","path":"/description","expected":"每轮输出三个候选行动。","value":""}
+]
+```
+
+`remove` / `replace` 由来源版本号保护，省略 `expected`。`replaceBlock` 包含首尾标记，两者必须各自唯一、前后有序；边界有歧义时选择更长但仍简短的标记。无需转录区块内部代码或保留的剧情。
 
 展示路径使用 JSON Pointer，键中的 `~` 和 `/` 分别写作 `~0`、`~1`。省略 displayFields 展示全部非内部字段；选择集合时，新成员会自动展示。工具不会生成自定义布局或迁移按钮行为。
 

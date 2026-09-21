@@ -157,6 +157,9 @@ test('两个原生工具只允许卡片工作台调用',async()=>{
   const registered=new Map(),calls=[];let mode='story'
   registerMvuConversionTools({tools:{register:tool=>registered.set(tool.name,tool)},defineTool:tool=>tool,chatForSession:async()=>({mode}),conversion:{convert:async args=>{calls.push(args);return {ok:true}},verify:async()=>({valid:true})}})
   assert.equal(registered.size,2)
+  const cleanupSchema = registered.get('tavern_convert_to_mvu').parameters.cleanup.items.properties
+  assert.notEqual(cleanupSchema.expected.required, true)
+  assert.ok(cleanupSchema.op.enum.includes('replaceBlock'))
   await assert.rejects(registered.get('tavern_convert_to_mvu').execute({action:'inspect'},{}),/工作台/)
   mode='card';assert.equal((await registered.get('tavern_convert_to_mvu').execute({action:'inspect'},{})).report.ok,true)
   assert.equal((await registered.get('tavern_validate_mvu_conversion').execute({},{})).report.valid,true)
@@ -193,9 +196,59 @@ test('专用工具使用真实 DSH 参数/输出定义', {skip:!process.env.DSH_
   registerMvuConversionTools({defineTool,tools:{register:tool=>registered.set(tool.name,tool)},conversion:f.conversion,chatForSession:async()=>({mode:'card'})})
   const tool=registered.get('tavern_convert_to_mvu'), exec={agent:{session:{id:'test'}}}
   const {report:inspection}=await tool.execute({action:'inspect',sourcePath:f.sourcePath},exec)
-  const {report:result}=await tool.execute({action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,...definition()},exec)
+  const {report:result}=await tool.execute({action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,...definition(),cleanup:[...definition().cleanup,{op:'remove',path:'/character_book/entries/0'}]},exec)
   assert.equal(result.validation.valid,true)
   const validation=await registered.get('tavern_validate_mvu_conversion').execute({path:result.path},exec)
   assert.equal(validation.report.valid,true)
   assert.doesNotThrow(()=>JSON.stringify(tool.output.render({}, {report:result})))
+})
+
+test('大条目删除仅需路径；版本号保护原卡且保留无关大段内容', async t => {
+  const f = await fixture(t), doc = await f.resources.readCard(f.sourcePath)
+  const large = '保留的长篇剧情。'.repeat(3000)
+  cardData(doc).scenario = large
+  cardData(doc).character_book.entries.push({id:9,comment:'旧面板',content:'旧状态代码'.repeat(3000)})
+  await f.resources.writeWorking(f.sourcePath, JSON.stringify(doc))
+  const before = await f.resources.readText(f.sourcePath), inspection = await f.inspect()
+  const args = {action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,...definition(),cleanup:[...definition().cleanup,{op:'remove',path:'/character_book/entries/1'}]}
+  assert.ok(JSON.stringify(args).length < 1000)
+  const result = await f.conversion.convert(args), data = cardData(await f.resources.readCard(result.path))
+  assert.equal(result.validation.valid, true)
+  assert.equal(data.scenario, large)
+  assert.equal(data.character_book.entries.some(e => e.id === 9), false)
+  assert.equal(await f.resources.readText(f.sourcePath), before)
+  cardData(doc).scenario += '新内容'
+  await f.resources.writeWorking(f.sourcePath, JSON.stringify(doc))
+  await assert.rejects(f.conversion.convert(args), /已变化/)
+})
+
+test('同字段多个小编辑按原文定位，不重传保留正文或长区块', () => {
+  const data = {description:'剧情甲。旧短句。<旧面板>'+'代码'.repeat(5000)+'</旧面板>剧情乙。旧尾句。',scenario:'旧场景',character_book:{entries:[{content:'A'}, {content:'保留'}, {content:'B'}]}}
+  const cleanup = [
+    {op:'replaceText',path:'/description',expected:'旧短句。',value:''},
+    {op:'remove',path:'/character_book/entries/0'},
+    {op:'replaceBlock',path:'/description',start:'<旧面板>',end:'</旧面板>',value:''},
+    {op:'replace',path:'/scenario',value:'新场景'},
+    {op:'replaceText',path:'/description',expected:'旧尾句。',value:'新尾句。'},
+    {op:'remove',path:'/character_book/entries/2'}
+  ]
+  applyMvuCleanup(data, cleanup)
+  assert.equal(data.description, '剧情甲。剧情乙。新尾句。')
+  assert.equal(data.scenario, '新场景')
+  assert.deepEqual(data.character_book.entries, [{content:'保留'}])
+})
+
+test('区块边界不唯一、倒置及范围重叠都整批拒绝，旧 expected 校验仍有效', () => {
+  for (const cleanup of [
+    [{op:'replaceBlock',path:'/description',start:'重复',end:'尾',value:''}],
+    [{op:'replaceBlock',path:'/description',start:'尾',end:'头',value:''}],
+    [{op:'replaceBlock',path:'/description',start:'头',end:'缺失',value:''}],
+    [{op:'replaceBlock',path:'/description',start:'头',end:'尾',value:''},{op:'replaceText',path:'/description',expected:'正文',value:''}],
+    [{op:'remove',path:'/description'},{op:'replaceText',path:'/description',expected:'正文',value:''}],
+    [{op:'remove',path:'/description',expected:'错误原值'}]
+  ]) {
+    const data = {description:'头重复正文重复尾',scenario:'原场景'}, before = structuredClone(data)
+    assert.throws(() => applyMvuCleanup(data, [{op:'replace',path:'/scenario',value:'新场景'},...cleanup]))
+    assert.deepEqual(data, before)
+  }
 })

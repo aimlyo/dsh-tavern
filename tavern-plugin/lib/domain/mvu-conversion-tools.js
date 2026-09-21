@@ -11,7 +11,7 @@ export function registerMvuConversionTools({ tools, defineTool, conversion, chat
   }
   tools.register(defineTool({
     name: 'tavern_convert_to_mvu',
-    description: '将人物卡转换为独立 MVU 副本。先 inspect 获取实际世界书合并底稿、sourceRevision 和清理路径；用户授权转换后 apply。工具负责初值/后台规则、固定面板、每个开场入口、模型历史隔离与绑定，不需要手写 HTML 或正则。同一来源和名称可重复调用；更新现有副本须提供 inspect 返回的 targetRevision。',
+    description: '将人物卡转换为独立 MVU 副本。先 inspect 获取实际世界书合并底稿、sourceRevision 和清理路径；用户授权转换后 apply。工具从磁盘复制整卡后清理并追加 MVU；参数仅提交改动和变量定义，不回传原卡或保留内容。工具负责初值/后台规则、固定面板、每个开场入口、模型历史隔离与绑定，不需要手写 HTML 或正则。同一来源和名称可重复调用；更新现有副本须提供 inspect 返回的 targetRevision。',
     parameters: {
       action: { type: 'string', required: true, enum: ['inspect', 'apply'] },
       sourcePath: { type: 'string', required: true, description: '原卡 cards/... 路径；始终保留原卡' },
@@ -24,11 +24,13 @@ export function registerMvuConversionTools({ tools, defineTool, conversion, chat
         path: { type: 'string', required: true, description: '相对于初值的 JSON Pointer，如 /玩家/位置；可选择整个集合' },
         label: { type: 'string', description: '显示名称' }
       } } },
-      cleanup: { type: 'array', description: '相对于 inspect 返回 card 的最小清理操作；全部按修改前底稿定位。保留无关内容。原值不匹配时整次转换不写入。', items: { type: 'object', additionalProperties: false, properties: {
-        op: { type: 'string', required: true, enum: ['replaceText', 'replace', 'remove'] },
+      cleanup: { type: 'array', description: '相对于 inspect.card 的小改动；版本号校验整个底稿。整项删除只传路径，短改文只传片段，长区块只传首尾标记；同字段支持多处不重叠编辑。无需回传原卡。', items: { type: 'object', additionalProperties: false, properties: {
+        op: { type: 'string', required: true, enum: ['replaceText', 'replaceBlock', 'replace', 'remove'] },
         path: { type: 'string', required: true, description: '如 /description 或 /character_book/entries/0；数组下标按 inspect 底稿' },
-        expected: { type: 'json', required: true, description: 'replace/remove 为完整原值；replaceText 为只出现一次的原文片段' },
-        value: { type: 'json', description: '替换值；replaceText 必须是字符串，删除片段用空字符串；remove 省略' }
+        expected: { type: 'json', description: '仅 replaceText 必填：恰好出现一次的短原文；remove/replace 省略，无需回传完整原值' },
+        start: { type: 'string', description: 'replaceBlock 必填：在字段内唯一的起始标记，包含在替换范围中' },
+        end: { type: 'string', description: 'replaceBlock 必填：在字段内唯一且位于 start 后的结束标记，同样包含在替换范围中' },
+        value: { type: 'json', description: '替换值；replaceText/replaceBlock 必须是字符串，删除片段或区块用空字符串；replace 仅提交新值，remove 省略' }
       } } }
     },
     output, isConcurrencySafe: () => false,

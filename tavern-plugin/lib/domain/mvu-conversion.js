@@ -22,15 +22,21 @@ function outputDigest(document) {
   return digest(copy)
 }
 
-// All paths refer to the inspected card object. Compare every precondition before
-// applying any edit; delete array elements backwards so adjacent removals are safe.
+// Paths and text ranges refer to the same revision-checked source snapshot.
+// Resolve all edits before mutating; both array removals and text edits run backwards.
 export function applyMvuCleanup(data, cleanup = []) {
   if (!Array.isArray(cleanup)) throw Error('cleanup 必须是数组')
   const permitted = new Set(['description', 'personality', 'scenario', 'first_mes', 'alternate_greetings', 'mes_example', 'system_prompt', 'post_history_instructions', 'character_book', 'extensions'])
+  function locate(text, anchor, path) {
+    if (typeof text !== 'string' || typeof anchor !== 'string' || !anchor) throw Error('清理需要非空文字标记: ' + path)
+    const start = text.indexOf(anchor)
+    if (start < 0 || text.indexOf(anchor, start + 1) !== -1) throw Error('清理原文必须恰好匹配一次: ' + path)
+    return start
+  }
   const edits = cleanup.map(edit => {
     const keys = pointerKeys(edit.path)
     if (!permitted.has(keys[0]) || (keys[0] === 'extensions' && !['regex_scripts', 'tavern_helper'].includes(keys[1])) || (keys[0] === 'character_book' && keys[1] !== 'entries')) throw Error('清理路径不在允许的内容范围: ' + edit.path)
-    if (!['replace', 'remove', 'replaceText'].includes(edit.op) || !Object.hasOwn(edit, 'expected')) throw Error('清理操作需要 op 和 expected: ' + edit.path)
+    if (!['replace', 'remove', 'replaceText', 'replaceBlock'].includes(edit.op)) throw Error('无效清理操作: ' + edit.path)
     if (edit.op !== 'remove' && !Object.hasOwn(edit, 'value')) throw Error('替换操作缺少 value: ' + edit.path)
     let parent = data
     for (const key of keys.slice(0, -1)) {
@@ -41,21 +47,37 @@ export function applyMvuCleanup(data, cleanup = []) {
     if (Array.isArray(parent) && !/^(0|[1-9]\d*)$/.test(key)) throw Error('数组清理必须使用有效下标: ' + edit.path)
     if (!parent || !Object.hasOwn(parent, key)) throw Error('清理路径不存在: ' + edit.path)
     const before = parent[key]
-    if (edit.op === 'replaceText') {
-      if (typeof before !== 'string' || typeof edit.expected !== 'string' || !edit.expected || typeof edit.value !== 'string' || before.split(edit.expected).length !== 2) throw Error('清理原文必须恰好匹配一次: ' + edit.path)
-    } else if (!isDeepStrictEqual(before, edit.expected)) throw Error('清理原值不匹配: ' + edit.path)
-    return { ...edit, parent, key, keys }
+    let range
+    if (edit.op === 'replaceText' || edit.op === 'replaceBlock') {
+      if (typeof edit.value !== 'string') throw Error('文字替换 value 必须是字符串: ' + edit.path)
+      const start = locate(before, edit.op === 'replaceText' ? edit.expected : edit.start, edit.path)
+      const end = edit.op === 'replaceText' ? start + edit.expected.length : locate(before, edit.end, edit.path) + edit.end.length
+      if (end <= start || (edit.op === 'replaceBlock' && end - edit.end.length < start + edit.start.length)) throw Error('首尾标记顺序错误或重叠: ' + edit.path)
+      range = { start, end }
+    } else if (Object.hasOwn(edit, 'expected') && !isDeepStrictEqual(before, edit.expected)) throw Error('清理原值不匹配: ' + edit.path)
+    return { ...edit, parent, key, keys, range }
   })
   for (let i = 0; i < edits.length; i++) for (let j = 0; j < i; j++) {
-    const a = edits[i].keys, b = edits[j].keys
-    if (a.slice(0, Math.min(a.length, b.length)).every((key, k) => key === b[k])) throw Error('清理路径重复或互相覆盖，请合并操作')
+    const a = edits[i], b = edits[j]
+    if (!a.keys.slice(0, Math.min(a.keys.length, b.keys.length)).every((key, k) => key === b.keys[k])) continue
+    if (a.keys.length === b.keys.length && a.range && b.range && (a.range.end <= b.range.start || b.range.end <= a.range.start)) continue
+    throw Error('清理路径或文字范围重复或互相覆盖')
   }
-  edits.sort((a, b) => a.parent === b.parent && Array.isArray(a.parent) ? Number(b.key) - Number(a.key) : 0)
+  const parents = new Map()
+  for (const edit of edits) if (!parents.has(edit.parent)) parents.set(edit.parent, parents.size)
+  edits.sort((a, b) => {
+    if (a.parent !== b.parent) return parents.get(a.parent) - parents.get(b.parent)
+    if (a.key === b.key && a.range && b.range) return b.range.start - a.range.start
+    return Array.isArray(a.parent) ? Number(b.key) - Number(a.key) : a.key.localeCompare(b.key)
+  })
   for (const edit of edits) {
     if (edit.op === 'remove') {
       if (Array.isArray(edit.parent)) edit.parent.splice(Number(edit.key), 1)
       else delete edit.parent[edit.key]
-    } else edit.parent[edit.key] = edit.op === 'replaceText' ? edit.parent[edit.key].replace(edit.expected, () => edit.value) : clone(edit.value)
+    } else if (edit.range) {
+      const text = edit.parent[edit.key]
+      edit.parent[edit.key] = text.slice(0, edit.range.start) + edit.value + text.slice(edit.range.end)
+    } else edit.parent[edit.key] = clone(edit.value)
   }
   return data
 }
@@ -95,7 +117,7 @@ export function createMvuConversion({ resources }) {
       targetRevision: existing === undefined ? null : digest(existing), card: source.data,
       existingTarget: existing === undefined ? null : cardData(JSON.parse(existing)),
       preservedInactiveWorldbook: source.preservedBook ?? null,
-      instruction: 'cleanup 的路径相对于 card；只删除已确认被替代的内容。apply 带回 sourceRevision；覆盖已有转换副本还需 targetRevision。' }
+      instruction: '工具从磁盘复制底稿再修改；apply 仅提交版本号、cleanup 和 MVU 定义，无需回传 card。remove 只需路径，replace 只需新值；短片段用 replaceText，长区块用 replaceBlock 首尾标记（含边界）。同字段可提交多个不重叠修改。覆盖已有副本还需 targetRevision。' }
   }
   async function apply(args) {
     const source = await snapshot(args.sourcePath), target = targetFor(source, args.name)
