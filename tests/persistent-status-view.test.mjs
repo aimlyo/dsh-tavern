@@ -133,7 +133,7 @@ test('旧数值来源只在原文唯一声明时迁移，未知 HTML 不被误�
 
 
 test('带原文捕获替换的面板保留求值结果', () => {
-  const rule = { id: 'captured-status', placement: [2], markdownOnly: true, findRegex: '/<mvu-status\\s*\\/>/g', replaceString: '<script>show("$&")</script>' }
+  const rule = { id: 'captured-status', placement: [2], markdownOnly: true, findRegex: '/<mvu-status\\s*\\/>/g', replaceString: '<script>show("$0")</script>' }
   const content = '<script>show("captured")</script>'
   const result = projectPersistentStatusView([{role:'assistant',turn:1}], [projection(1,[{kind:'html',content,statusKey:'id:captured-status'}])], {regexScripts:[rule]})
   assert.equal(result.statusView.content,content)

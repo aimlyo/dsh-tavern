@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {readFile} from 'node:fs/promises'
-import vm from 'node:vm'
+import {buildMvuArtifacts} from '../tavern-plugin/lib/domain/mvu-conversion-artifacts.js'
 import {UpstreamTemplateRuntime} from './fixtures/upstream-template-runtime.mjs'
 import {projectReplyHistory} from '../tavern-plugin/lib/domain/reply-presentation.js'
 import {projectPersistentStatusView} from '../tavern-plugin/lib/domain/persistent-status-view.js'
@@ -84,11 +83,7 @@ test('card-to-mvu named status survives reordered rules and updates only its per
 
 
 test('实际 MVU 配方在恢复与修改模板后仍只保留一个状态面板', async () => {
- const root=new URL('../presets/tavern/skills/card-to-mvu/',import.meta.url)
- const recipe=await readFile(new URL('references/mvu-recipe.md',root),'utf8')
- const statusHtml=await readFile(new URL('assets/status.html',root),'utf8')
- const code=recipe.match(/```js\n([\s\S]*?)\n```/)[1]
- const regexScripts=JSON.parse(vm.runInNewContext(code+'\nJSON.stringify(statusRegex)',{statusHtml}))
+ const {regexScripts}=buildMvuArtifacts({initialState:{玩家:{位置:'门口'}},updateRules:'根据正文更新位置'})
  const context={settings,charName:'配方验证',regexScripts}
  const initial=await runtime.lifecycle({...context,transcript:[{role:'assistant',content:'门口。\n<mvu-status/>'}]})
  const a=display(initial.first,regexScripts)

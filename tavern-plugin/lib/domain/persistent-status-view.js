@@ -50,7 +50,7 @@ function projectStatusView(messages, projections, options, compile) {
           // Fixed HTML follows the latest card template. Stateful EJS history
           // and source-dependent regex replacements retain their captured output;
           // do not replay historical side effects or serve raw EJS.
-          if (/<%|&lt;%|\$(?:[1-9]|&|`|')/.test(String(rule.replaceString))) templateContent = resolveDisplayIdentityMacros(contentOf(parts[index]), options)
+          if (/<%|&lt;%/.test(String(rule.replaceString)) || /\$\d+|\$<[^>]+>|\{\{match\}\}/i.test(String(rule.replaceString))) templateContent = resolveDisplayIdentityMacros(contentOf(parts[index]), options)
         }
       }
       if (!origin) {

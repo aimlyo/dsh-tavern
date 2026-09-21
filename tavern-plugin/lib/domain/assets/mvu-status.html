@@ -15,6 +15,7 @@ dl{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,2fr);gap:8px 12p
 <main><h1>当前状态</h1><p id="notice" role="status">等待 MVU 初始化…</p><dl id="values"></dl></main>
 <script>
 (function () {
+  const fields = __DSH_MVU_FIELDS__;
   function collect(value, path, rows) {
     if (value && typeof value === 'object') {
       for (const [key, child] of Object.entries(value)) {
@@ -29,7 +30,14 @@ dl{display:grid;grid-template-columns:minmax(80px,1fr) minmax(0,2fr);gap:8px 12p
     const data = Mvu.getMvuData({type:'message', message_id:'latest'}).stat_data;
     const notice = document.getElementById('notice'), target = document.getElementById('values');
     const rows = [];
-    if (data && typeof data === 'object') collect(data, [], rows);
+    if (data && typeof data === 'object') {
+      if (!fields.length) collect(data, [], rows);
+      else for (const field of fields) {
+        let value = data;
+        for (const key of field.keys) value = value && Object.prototype.hasOwnProperty.call(value, key) ? value[key] : undefined;
+        collect(value, [field.label], rows);
+      }
+    }
     target.replaceChildren();
     for (const [label, value] of rows) {
       const dt = document.createElement('dt'), dd = document.createElement('dd');

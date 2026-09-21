@@ -637,7 +637,7 @@ test('兼容旧暂存记录：在最终回复完成后写入', async () => {
     'tavern_update_worldbook',
     'tavern_read_preset',
     'tavern_update_preset',
-    'tavern_copy_card',
+    'tavern_copy_card', 'tavern_convert_to_mvu', 'tavern_validate_mvu_conversion',
     'tavern_update_card',
     'tavern_restore_card',
     'tavern_validate_card',
@@ -686,7 +686,7 @@ test('Windows 卡片模式暴露 PowerShell 而不是 Bash', async () => {
     'tavern_update_worldbook',
     'tavern_read_preset',
     'tavern_update_preset',
-    'tavern_copy_card',
+    'tavern_copy_card', 'tavern_convert_to_mvu', 'tavern_validate_mvu_conversion',
     'tavern_update_card',
     'tavern_restore_card',
     'tavern_validate_card',
@@ -711,7 +711,7 @@ test('空白卡片工作台确认完整设定后直接创建并绑定正式人�
   const duplicate = await run.orchestrator.finalize({ sessionId: 'session-1', turn: 6, userText: '确认角色和玩家', assistantText: '重复回调' })
   assert.equal(duplicate.duplicate, true)
   assert.equal(run.createdCards.length, 1)
-  assert.deepEqual(await run.orchestrator.visibleTools('session-1'), ['web_search', 'bash', 'str_replace_editor', 'read', 'write', 'edit', 'read_image', 'skill', 'tavern_read_skill_reference', 'tavern_save_skill', 'cordis_inspect_list', 'cordis_inspect_query', 'cordis_inspect_self', 'cordis_define', 'cordis_run', 'cordis_stop', 'cordis_undefine', 'tavern_user_profile_read', 'tavern_user_profile_save', 'tavern_read_card', 'tavern_read_card_raw', 'tavern_read_play_chat', 'tavern_read_worldbook', 'tavern_update_worldbook', 'tavern_read_preset', 'tavern_update_preset', 'tavern_copy_card', 'tavern_update_card', 'tavern_restore_card', 'tavern_validate_card', 'tavern_test_response'])
+  assert.deepEqual(await run.orchestrator.visibleTools('session-1'), ['web_search', 'bash', 'str_replace_editor', 'read', 'write', 'edit', 'read_image', 'skill', 'tavern_read_skill_reference', 'tavern_save_skill', 'cordis_inspect_list', 'cordis_inspect_query', 'cordis_inspect_self', 'cordis_define', 'cordis_run', 'cordis_stop', 'cordis_undefine', 'tavern_user_profile_read', 'tavern_user_profile_save', 'tavern_read_card', 'tavern_read_card_raw', 'tavern_read_play_chat', 'tavern_read_worldbook', 'tavern_update_worldbook', 'tavern_read_preset', 'tavern_update_preset', 'tavern_copy_card', 'tavern_convert_to_mvu', 'tavern_validate_mvu_conversion', 'tavern_update_card', 'tavern_restore_card', 'tavern_validate_card', 'tavern_test_response'])
 })
 
 test('前台自由故事和剧本模式稳定暴露历史正文检索工具', async () => {

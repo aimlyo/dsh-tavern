@@ -1,3 +1,5 @@
+import { createMvuConversion } from './domain/mvu-conversion.js'
+import { registerMvuConversionTools } from './domain/mvu-conversion-tools.js'
 import { isRescuedHistoryMessage, rescueHistoryNotice } from './domain/chat-history-rescue.js'
 import { readHostCompatibility } from './domain/host-compatibility.js'
 import { measureForegroundPressure } from './domain/foreground-context-pressure.js'
@@ -4304,6 +4306,8 @@ export async function apply(ctx) {
         return { name: saved.name, chars: saved.chars, overwritten: saved.overwritten, saved: true }
       }
     }))
+
+    registerMvuConversionTools({ tools, defineTool, conversion: createMvuConversion({ resources: fileResources }), chatForSession })
 
     tools.register(defineTool({
       name: 'tavern_copy_card',

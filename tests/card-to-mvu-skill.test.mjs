@@ -1,3 +1,4 @@
+import {buildMvuArtifacts} from '../tavern-plugin/lib/domain/mvu-conversion-artifacts.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readdir, readFile } from 'node:fs/promises'
@@ -13,9 +14,8 @@ import { projectPersistentStatusView } from '../tavern-plugin/lib/domain/persist
 
 const root = new URL('../presets/tavern/skills/', import.meta.url)
 const backgroundRoot = new URL('../presets/tavern-background/skills/', import.meta.url)
-const skillRoot = new URL('card-to-mvu/', root)
-const recipe = await readFile(new URL('references/mvu-recipe.md', skillRoot), 'utf8')
-const statusHtml = await readFile(new URL('assets/status.html', skillRoot), 'utf8')
+const definition = { initialState: {场景:{地点:'入口'},玩家:{位置:'门口'},人物:{$meta:{extensible:true,template:{姓名:'',位置:'未明确',在场:true}}}}, updateRules: '按正文事实更新玩家位置与人物档案' }
+const {entries: recipeEntries, regexScripts: recipeRegex, statusHtml} = buildMvuArtifacts(definition)
 
 test('转换 Skill 可由 Tavern 内置目录读取，引用资源齐全且默认可调用', async () => {
   const skills = createTavernSkillModule({ directory: new URL('../data/skills/', import.meta.url).pathname, builtInDirectory: root.pathname })
@@ -68,9 +68,8 @@ test('人物设计是现有后台 Agent 按需加载的内置 Skill', async () =
 })
 
 test('Skill 配方可构造可导入卡，规则分流、状态显示及模型历史隔离均有效', () => {
-  const entries = JSON.parse(recipe.match(/```json\n([\s\S]*?)\n```/)[1])
-  const regexCode = recipe.match(/```js\n([\s\S]*?)\n```/)[1]
-  const regex = vm.runInNewContext(regexCode + '\nJSON.stringify(statusRegex)', { statusHtml })
+  const entries = recipeEntries
+  const regex = JSON.stringify(recipeRegex)
   const card = { spec: 'chara_card_v3', spec_version: '3.0', data: {
     name: '转换配方测试', description: '{{char}} 与 {{user}} 的旅途。',
     first_mes: '你站在门口。\n\n<mvu-status/>',

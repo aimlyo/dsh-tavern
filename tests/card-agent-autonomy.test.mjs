@@ -25,12 +25,12 @@ test('任务提示继承用户已有授权，不强制重复确认或禁止适�
 })
 
 test('MVU 转换创建保留封面的独立副本，并保护原卡和无关字段', () => {
-  assert.match(mvuSkill, /调用 `tavern_copy_card`/)
-  assert.match(mvuSkill, /完整保留无关字段/)
-  assert.match(mvuSkill, /重新解析并比较原卡与副本/)
-  assert.match(mvuSkill, /保留源卡 PNG.*`imageCopied`/)
-  assert.match(mvuSkill, /独立路径和资源 ID/)
-  assert.match(mvuSkill, /不能向仍指向原卡的工具提交变更/)
+  assert.match(mvuSkill, /`tavern_convert_to_mvu`/)
+  assert.match(mvuSkill, /默认保留无关字段/)
+  assert.match(mvuSkill, /工具保存封面、世界书和绑定/)
+  assert.match(mvuSkill, /原卡及共享资源保持不变/)
+  assert.match(mvuSkill, /原文不匹配重新定位/)
+
 })
 
 test('剧本任务不把现有界面路径描述成 Agent 的能力禁令', () => {
