@@ -40,7 +40,8 @@ test('旧版 Desktop 经最新安装脚本走 CDN 覆盖升级：补丁落盘、
     ['cordis.patch.yml', Buffer.from('[]\n')],
     ['install.sh', Buffer.from(unix)],
     ['install.ps1', Buffer.from(windows)],
-    // Stub only dependency execution and DSH boot; download, hashing and overwrite are real.
+    // Stub dependency provisioning/execution and DSH boot; download, hashing and overwrite are real.
+    ['bin/desktop-package-manager.mjs', Buffer.from('console.log(' + JSON.stringify(mocks) + ');')],
     ['bin/dsh-tavern.mjs', Buffer.from("import fs from 'node:fs'; fs.writeFileSync(new URL('../installed.txt', import.meta.url), process.argv.slice(2).join(' '));\n")],
   ])
   for (const file of [...patches, 'bin/dsh-compatibility.mjs', 'config/dsh-compatibility.json']) {
