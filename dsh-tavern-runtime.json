@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "revision": "5f28307da2e6009b99c8226bfac768e60b686198",
-  "releaseSequence": 320,
+  "revision": "1f049ddb8db5372c6f64f105878dbf32232717bb",
+  "releaseSequence": 321,
   "version": "2.0.0",
   "files": [
     {
@@ -28,6 +28,11 @@
       "path": "bin/cli-runtime.mjs",
       "sha256": "0c6e70118b0de27e479efa067b0e5848c2fe01ea3768017ed13f7bdfddbb4d62",
       "size": 5156
+    },
+    {
+      "path": "bin/desktop-package-manager.mjs",
+      "sha256": "f47cfac10d3e68b72c3aba3bbb01478455cf4ba3835f142b40d74551dccde5ef",
+      "size": 4356
     },
     {
       "path": "bin/dsh-compatibility.mjs",
@@ -71,8 +76,8 @@
     },
     {
       "path": "bin/profile-installation.mjs",
-      "sha256": "b3e3b60e142f21cf1da13acd0ef8dc5fad138d229c12d0655bc60dc2b0c6c9ae",
-      "size": 13219
+      "sha256": "eb2247168f7b8e7a1db484a384b7f052c1dba11fe86bf63fff2c4e29481b3f0c",
+      "size": 13614
     },
     {
       "path": "bin/service-lifecycle.mjs",
@@ -116,8 +121,8 @@
     },
     {
       "path": "install.ps1",
-      "sha256": "06760cdf3631f84a1361c142a39e7087b92aaa34147a37618c42b99e92cec3af",
-      "size": 20475
+      "sha256": "332069ea38cb799461be0119f39e3d42a3410724c7d2d4a23bae070d886c1ec9",
+      "size": 21035
     },
     {
       "path": "install.sh",
@@ -241,8 +246,8 @@
     },
     {
       "path": "tavern-plugin/lib/application-updater.js",
-      "sha256": "90008cf3a3f7f424056d320392334e1c80e0791568ab54f3e11d059e9752522f",
-      "size": 25411
+      "sha256": "c7f5c8b87e847be36aae285c0035115ee92d797622f958d6262dad334d8f34f5",
+      "size": 25661
     },
     {
       "path": "tavern-plugin/lib/background-agent-runner.js",
