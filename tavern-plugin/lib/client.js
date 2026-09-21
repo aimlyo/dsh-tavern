@@ -9961,6 +9961,7 @@ window.__ModuleLoader__.load({
 							h("label", null, h("input", { type: "checkbox", checked: entry.vectorized === true, onChange: function (event) { updateEntry(index, { vectorized: event.target.checked }); } }), "向量候选"),
 						)
 						),
+						),
 						h("div", { className: "dsh-tavern-worldbook-danger-zone" },
 							h("button", { className: "dsh-tavern-worldbook-del", onClick: function () { removeEntry(index); } }, "删除条目")
 						)
