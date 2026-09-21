@@ -159,7 +159,7 @@ diff --git a/lib/index.js b/lib/index.js
  			else {
  				const parts = [SIDE_BOUNDARY_PROMPT];
  				const snapshot = pendingSnapshots.get(childId);
-@@ -3655,6 +3691,59 @@ function buildSidechatApi(ctx) {
+@@ -3655,6 +3691,66 @@ function buildSidechatApi(ctx) {
  			}
  			return { accepted: true };
  		},
@@ -174,11 +174,16 @@ diff --git a/lib/index.js b/lib/index.js
 +			const requested = Number.isSafeInteger(payload.maxMessages) && payload.maxMessages > 0 ? payload.maxMessages : 50;
 +			const live = liveThreadAgent(ctx, childId);
 +			let events;
-+			if (live !== void 0) events = sessionLogEvents(live.session);
-+			else {
++			let inheritedEventCount;
++			if (live !== void 0) {
++				events = sessionLogEvents(live.session);
++				inheritedEventCount = live.session.inheritedEventCount ?? live.session.header?.seedLength;
++			} else {
 +				const persistence = ctx.get("sessionPersistence");
 +				if (persistence === void 0) throw new SidebarError("sidechat-error", "the session persistence service is unavailable", 503);
-+				events = (await persistence.inspect(childId)).events;
++				const inspected = await persistence.inspect(childId);
++				events = inspected.events;
++				inheritedEventCount = inspected.inheritedEventCount ?? inspected.meta?.seedLength;
 +			}
 +			let end = events.length;
 +			if (beforeSeq !== void 0) {
@@ -210,16 +215,18 @@ diff --git a/lib/index.js b/lib/index.js
 +			* cuts the transcript at the LAST such marker, so those later markers would
 +			* hide the thread's own earlier turns. Only the creation boundary is a
 +			* real fork marker: expose that one, keep the rest out of the view. */
-+			const firstSeedSeq = events.find((event) => event.type === "session/end-seed")?.seq;
++			// Inherited parent logs can contain their own markers. The child's
++			// creation marker is at its inherited prefix boundary, not the first marker.
++			const seedBoundary = Number.isSafeInteger(inheritedEventCount) && inheritedEventCount >= 0 ? inheritedEventCount : events.find((event) => event.type === "session/end-seed")?.seq;
 +			return {
-+				events: page.filter((event) => event.type !== "session/end-seed" || event.seq === firstSeedSeq).map((event) => ({ event })),
++				events: page.filter((event) => event.type !== "session/end-seed" || event.seq === seedBoundary).map((event) => ({ event })),
 +				hasMore: cut > 0
 +			};
 +		},
  		"sidechat.info": async (payload) => {
  			const childId = requireString(payload, "childId");
  			const agent = liveThreadAgent(ctx, childId);
-@@ -4130,7 +4219,7 @@ function apply(ctx, config) {
+@@ -4130,7 +4226,7 @@ function apply(ctx, config) {
  		}
  	};
  	ctx.inject(["settings"], (sctx) => {
