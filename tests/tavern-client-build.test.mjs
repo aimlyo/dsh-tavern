@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import vm from 'node:vm'
 
 import { assembleTavernClient } from '../bin/build-tavern-client.mjs'
 
@@ -20,4 +21,9 @@ test('实时视图与刷新实现属于独立源码模块', async () => {
   assert.match(template, /^\s*\/\/ @include modules\/library-refresh\.js$/m)
   assert.match(template, /^\s*\/\/ @include modules\/live-tavern-view\.js$/m)
   assert.doesNotMatch(template, /function createLiveTavernViewModule/)
+})
+
+test('完整客户端必须可解析，局部源码测试不能代替入口语法检查', async () => {
+  const source = await assembleTavernClient()
+  assert.doesNotThrow(() => new vm.Script(source, { filename: 'tavern-plugin/lib/client.js' }))
 })

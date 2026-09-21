@@ -1,5 +1,6 @@
 import { readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -38,6 +39,8 @@ export async function assembleTavernClient() {
 
 export async function buildTavernClient({ check = false } = {}) {
   const output = await assembleTavernClient()
+  // Parse the complete script before accepting or publishing a generated bundle.
+  new vm.Script(output, { filename: outputPath })
   const current = await readFile(outputPath, 'utf8').catch(() => '')
   if (current === output) return Object.freeze({ changed: false, path: outputPath })
   if (check) throw new Error('tavern-plugin/lib/client.js 已过期，请运行 pnpm build:client')
