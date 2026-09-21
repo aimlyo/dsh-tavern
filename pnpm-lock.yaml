@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  dsh-better-sidebar@0.17.1: f8d4bf62a0fc5a996b6f8f0d1665302e315bfc938b832e9b3a82e15a66efe0ff
+  dsh-better-sidebar@0.17.1: a25ab402136a13de0895ae66ea52be4a31dc86d34839fcecc71c207f32452b69
 
 importers:
 
@@ -19,7 +19,7 @@ importers:
         version: 11.2.0
       dsh-better-sidebar:
         specifier: 0.17.1
-        version: 0.17.1(patch_hash=f8d4bf62a0fc5a996b6f8f0d1665302e315bfc938b832e9b3a82e15a66efe0ff)
+        version: 0.17.1(patch_hash=a25ab402136a13de0895ae66ea52be4a31dc86d34839fcecc71c207f32452b69)
       dsh-tavern-plugin:
         specifier: link:./tavern-plugin
         version: link:tavern-plugin
@@ -1582,7 +1582,7 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
 
-  dsh-better-sidebar@0.17.1(patch_hash=f8d4bf62a0fc5a996b6f8f0d1665302e315bfc938b832e9b3a82e15a66efe0ff):
+  dsh-better-sidebar@0.17.1(patch_hash=a25ab402136a13de0895ae66ea52be4a31dc86d34839fcecc71c207f32452b69):
     dependencies:
       '@codemirror/commands': 6.11.0
       '@codemirror/lang-cpp': 6.0.3
