@@ -7769,7 +7769,6 @@ window.__ModuleLoader__.load({
 			}
 			const presetLibraryFeature = createExternalPresetAndBypassPlanFeatureModule();
 
-		// @include ejs-code-editor.js
 
 		function groupWorldBookEditorEntries(entries, query) {
 			const groups = { constant: [], dynamic: [] };
@@ -7813,8 +7812,7 @@ window.__ModuleLoader__.load({
 			const [busy, setBusy] = React.useState(false);
 			const [error, setError] = usePersistentError("世界书编辑");
 			const [query, setQuery] = React.useState("");
-            const [codeEntry, setCodeEntry] = React.useState(null);
-			React.useEffect(function () { setDraft(JSON.parse(JSON.stringify(initial))); setCodeEntry(null); }, [props.record]);
+			React.useEffect(function () { setDraft(JSON.parse(JSON.stringify(initial))); }, [props.record]);
 			const h = React.createElement;
 			function updateEntry(index, patch) {
 				const entries = (draft.entries || []).slice();
@@ -7879,14 +7877,16 @@ window.__ModuleLoader__.load({
 					h("summary", { className: "dsh-tavern-worldbook-entry-head" }, entry.comment || entry.title || "未命名条目"),
 					h("div", { className: "dsh-tavern-worldbook-entry-body" },
 						h("div", { className: "dsh-tavern-worldbook-entry-actions" },
+							h("label", null, h("input", { type: "checkbox", checked: entry.enabled !== false, onChange: function (event) { updateEntry(index, { enabled: event.target.checked }); } }), "启用"),
+
 							h("button", { className: "dsh-tavern-worldbook-kind", onClick: function () { updateEntry(index, { constant: !entry.constant }); } }, entry.constant ? "常驻" : "非常驻")
 						),
+						h("div", { className: "dsh-tavern-card-field dsh-tavern-worldbook-content" }, h("label", null, "内容"), h("textarea", { className: "large", rows: 14, "aria-label": "条目内容", value: entry.content || "", onChange: function (event) { updateEntry(index, { content: event.target.value }); } })),
+						h("details", { className: "dsh-tavern-worldbook-entry-settings" }, h("summary", null, "条目设置"),
 						h("div", { className: "dsh-tavern-card-field" }, h("label", null, "标题 / 备注"), h("input", { value: entry.comment || "", onChange: function (event) { updateEntry(index, { comment: event.target.value, title: event.target.value }); } })),
 						entry.constant ? null : h("div", { className: "dsh-tavern-card-field" }, h("label", null, "主触发词"), h("input", { value: textList(entry.primaryKeys), placeholder: "逗号分隔；支持 /pattern/flags", onChange: function (event) { updateEntry(index, { primaryKeys: parseList(event.target.value) }); } })),
-						h("div", { className: "dsh-tavern-card-field" }, h("label", null, "内容"), h("button", { type: "button", className: "dsh-tavern-btn", disabled: busy, onClick: () => setCodeEntry({ ref: entry.ref, value: entry.content || "", title: entry.comment || entry.title }) }, "EJS 代码编辑"), codeEntry?.ref === entry.ref ? h(EjsCodeEditor, { value: codeEntry.value, title: codeEntry.title, onClose: () => setCodeEntry(null), onApply: content => { updateEntry(index, { content }); setCodeEntry(null); } }) : null, h("textarea", { className: "large", value: entry.content || "", onChange: function (event) { updateEntry(index, { content: event.target.value }); } })),
 							entry.constant ? null : h("div", { className: "dsh-tavern-card-field" }, h("label", null, "二级触发词"), h("input", { value: textList(entry.secondaryKeys), placeholder: "逗号分隔", onChange: function (event) { updateEntry(index, { secondaryKeys: parseList(event.target.value) }); } })),
 							h("div", { className: "dsh-tavern-worldbook-checks" },
-							h("label", null, h("input", { type: "checkbox", checked: entry.enabled !== false, onChange: function (event) { updateEntry(index, { enabled: event.target.checked }); } }), "启用"),
 							h("label", null, h("input", { type: "checkbox", checked: entry.selective === true, onChange: function (event) { updateEntry(index, { selective: event.target.checked }); } }), "使用二级条件"),
 							h("label", null, h("input", { type: "checkbox", checked: entry.caseSensitive === true, onChange: function (event) { updateEntry(index, { caseSensitive: event.target.checked }); } }), "区分大小写"),
 							h("label", null, h("input", { type: "checkbox", checked: entry.matchWholeWords === true, onChange: function (event) { updateEntry(index, { matchWholeWords: event.target.checked }); } }), "整词匹配")
