@@ -1,3 +1,4 @@
+import { scriptForState } from './script-layout.js'
 import { projectAgentContent, projectAgentMessageText } from './runtime-content-projection.js'
 import { createBackgroundTaskCoordinator } from './background-task-coordinator.js'
 import { CHARACTER_DESIGN_READ_TOOL, CHARACTER_DESIGN_SAVE_TOOL } from './character-design-document.js'
@@ -331,7 +332,7 @@ export function createCandidateGenerator(options) {
     let script = null
     let scriptWindow = null
     if (scriptMode) {
-      script = await store.readScript(cardPath)
+      script = scriptForState(await store.readScript(cardPath), chat.scriptState)
       if (script === undefined || !Array.isArray(script.chunks) || script.chunks.length === 0) throw new Error('剧本文件不存在，请重新为人物卡导入剧本')
       scriptWindow = scripts.inspect({ script, state: chat.scriptState, request: { kind: 'choice' } })
     }
@@ -345,7 +346,8 @@ export function createCandidateGenerator(options) {
     chat = taskRun.chat
     const duplicate = preparedValue()
     if (duplicate !== null) return duplicate
-    if (scriptMode && scripts.inspect({ script, state: chat.scriptState, request: { kind: 'choice' } }).cursor !== scriptWindow.cursor) {
+    const currentScriptWindow = scriptMode ? scripts.inspect({ script, state: chat.scriptState, request: { kind: 'choice' } }) : null
+    if (scriptMode && (currentScriptWindow.cursor !== scriptWindow.cursor || currentScriptWindow.sourceOffset !== scriptWindow.sourceOffset || currentScriptWindow.chunkSize !== scriptWindow.chunkSize)) {
       const error = new Error('剧本游标已变化，请重新生成候选项')
       await taskRun.fail(error)
       throw error

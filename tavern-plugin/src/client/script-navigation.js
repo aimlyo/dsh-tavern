@@ -1,6 +1,7 @@
 function ScriptNavigation(props) {
     const h = React.createElement;
     const [page, setPage] = React.useState(null);
+    const [chunkSize, setChunkSize] = React.useState("500");
     const [position, setPosition] = React.useState("");
     const [loading, setLoading] = React.useState(false);
     const [saving, setSaving] = React.useState(false);
@@ -20,6 +21,7 @@ function ScriptNavigation(props) {
             const result = await rpc("browseScript", target === undefined ? {} : { position: target }, props.sessionId);
             if (ticket === generation.current) {
                 setPage(result);
+                setChunkSize(String(result.chunkSize || 500));
                 setPosition(value => value.trim() === "" ? currentBlock(result) : value);
             }
         } catch (err) { if (ticket === generation.current) setError(String(err.message || err)); }
@@ -27,12 +29,12 @@ function ScriptNavigation(props) {
     }
     React.useEffect(() => {
         if (previousSession.current !== props.sessionId) {
-            setPage(null); setPosition(""); setNotice(""); setSaving(false);
+            setPage(null); setPosition(""); setChunkSize("500"); setNotice(""); setSaving(false);
             previousSession.current = props.sessionId;
         }
         load();
         return () => { generation.current++; };
-    }, [props.sessionId, props.cursor, props.total]);
+    }, [props.sessionId, props.cursor, props.total, props.chunkSize]);
     async function point(number) {
         if (props.busy || saving || loading || !page) return;
         const session = activeSession.current;
@@ -45,6 +47,23 @@ function ScriptNavigation(props) {
             liveTavernView.invalidate(props.sessionId);
             setSaving(false);
             await load(number);
+        } catch (err) { if (session === activeSession.current) setError(String(err.message || err)); }
+        finally { if (session === activeSession.current) setSaving(false); }
+    }
+    async function saveChunkSize(event) {
+        event.preventDefault();
+        if (props.busy || saving || loading || !page) return;
+        const value = Number(chunkSize);
+        if (!Number.isSafeInteger(value) || value < 100 || value > 10000) { setError("请输入 100–10000 的整数"); return; }
+        const session = activeSession.current;
+        setSaving(true); setError(""); setNotice("");
+        try {
+            await rpc("setScriptChunkSize", { chunkSize: value, revision: page.revision, cardPath: page.cardPath, scriptVersion: page.scriptVersion }, props.sessionId);
+            if (session !== activeSession.current) return;
+            setPosition("");
+            setNotice("已保存推进字数，原文阅读位置保持不变，下一轮生效。");
+            liveTavernView.invalidate(props.sessionId);
+            await load();
         } catch (err) { if (session === activeSession.current) setError(String(err.message || err)); }
         finally { if (session === activeSession.current) setSaving(false); }
     }
@@ -64,9 +83,14 @@ function ScriptNavigation(props) {
                 onChange: event => setPosition(event.target.value) })),
             h("button", { type: "submit", disabled: loading || saving || !page?.totalChunks }, "跳转到"),
             h("button", { type: "button", disabled: loading || saving, onClick: () => load() }, "回到当前")),
+        h("form", { className: "dsh-script-nav-toolbar", onSubmit: saveChunkSize },
+            h("label", { className: "dsh-script-nav-position" }, "每轮推进字数", h("input", { type: "number", min: 100, max: 10000, step: 1, "aria-label": "每轮推进字数", value: chunkSize, disabled: props.busy || saving || loading || !page,
+                onChange: event => setChunkSize(event.target.value) })),
+            h("button", { type: "submit", disabled: props.busy || saving || loading || !page || Number(chunkSize) === (page.chunkSize || 500) }, saving ? "保存中…" : "保存字数")),
+        h("p", { className: "dsh-script-nav-hint" }, "默认 500，范围 100–10000，按汉字计数，尽量在句末或段落末切分。仅当前游玩生效；重新切片保留原文阅读位置。"),
         error ? h("p", { role: "alert" }, error) : null,
         notice ? h("p", { role: "status", className: "dsh-script-nav-notice" }, notice) : null,
-        props.busy ? h("p", null, "任务进行中，可浏览，暂不能修改游标。") : null,
+        props.busy ? h("p", null, "任务进行中，可浏览，暂不能修改游标或推进字数。") : null,
         loading ? h("p", { role: "status" }, "读取中…") : null,
         page ? h("div", null,
             h("p", { className: "dsh-script-nav-range" }, (page.cursor < page.totalChunks ? "当前游标：第 " + String(page.cursor + 1).padStart(2, "0") + " 块 · " : "") + page.from + "–" + page.to + " / " + page.totalChunks + " 块" + (page.cursor >= page.totalChunks && page.totalChunks ? " · 剧本已结束" : "")),

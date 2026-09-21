@@ -6,16 +6,17 @@ const source = await readFile(new URL('../tavern-plugin/src/client/script-naviga
 
 test('browse, paging and explicit idle-only cursor action remain separate', async () => {
   const states = [], refs = [], calls = []
-  let cursor = 0, refCursor = 0, effect, busy = false, current = 49
+  let cursor = 0, refCursor = 0, effect, busy = false, current = 49, savedSize = 500
   const component = vm.runInNewContext(source + '; ScriptNavigation', { React: {
     useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = typeof value === 'function' ? value(states[i]) : value }] },
     useRef(initial) { return refs[refCursor++] ||= { current: initial } }, useEffect(fn) { effect = fn },
     createElement: (type, props, ...children) => ({ type, props, children })
   }, liveTavernView: { invalidate() {} }, rpc: async (method, args) => {
     calls.push([method, args])
+    if (method === 'setScriptChunkSize') { savedSize = args.chunkSize; return { chunkSize: savedSize } }
     if (method === 'pointScript') { current = args.position - 1; return { cursor: current, message: '下一轮生效' } }
     const from = Math.max(1, Math.min((args.position || current + 1) - 4, 991))
-    return { from, to: from + 9, totalChunks: 1000, cursor: current, revision: 1, scriptVersion: 1, cardPath: 'card',
+    return { chunkSize: savedSize, from, to: from + 9, totalChunks: 1000, cursor: current, revision: 1, scriptVersion: 1, cardPath: 'card',
       chunks: Array.from({ length: 10 }, (_, i) => ({ number: from + i, text: '正文' })) }
   } })
   function render() {
@@ -55,5 +56,22 @@ test('browse, paging and explicit idle-only cursor action remain separate', asyn
   assert.match(JSON.stringify(render()), /当前游标：第 500 块/)
   await render().find(n => n.children?.includes('剧本块 →')).props.onClick()
   assert.match(JSON.stringify(render()), /506–515/)
+  const sizeInput = () => render().find(n => n.props?.['aria-label'] === '每轮推进字数')
+  const sizeForm = () => render().filter(n => n.type === 'form')[1]
+  assert.equal(sizeInput().props.value, '500')
+  sizeInput().props.onChange({ target: { value: '1000' } })
+  busy = true
+  assert.equal(sizeInput().props.disabled, true)
+  await sizeForm().props.onSubmit({ preventDefault() {} })
+  assert.equal(savedSize, 500)
+  busy = false
+  await sizeForm().props.onSubmit({ preventDefault() {} })
+  assert.equal(savedSize, 1000)
+  assert.equal(sizeInput().props.value, '1000')
+  assert.match(JSON.stringify(render()), /原文阅读位置保持不变/)
+  sizeInput().props.onChange({ target: { value: '1.5' } })
+  await sizeForm().props.onSubmit({ preventDefault() {} })
+  assert.equal(savedSize, 1000)
+  assert.match(JSON.stringify(render()), /100–10000 的整数/)
   dispose()
 })

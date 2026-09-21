@@ -3117,6 +3117,7 @@ export async function apply(ctx) {
       }
       case 'forkChat': return { fork: await forkChat(args?.chatId, args?.sessionId, args?.targetSessionId, args?.turn, args?.sourceRevision, args?.atSeq) }
       case 'browseScript': return await scriptNavigation.browse(args?.sessionId, args?.position)
+      case 'setScriptChunkSize': return await scriptNavigation.setChunkSize(args?.sessionId, args || {})
       case 'pointScript': return await scriptNavigation.point(args?.sessionId, args || {})
       case 'getSessionInventory': return await sessionInventory.read()
       case 'exportConversation': return await exportConversation(args && args.chatId, args && args.sessionId, args && args.title)

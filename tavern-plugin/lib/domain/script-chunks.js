@@ -47,10 +47,11 @@ function splitLegacyText(source, requestedSize) {
     return packed.map(function (text, index) { return { id: 'chunk-' + String(index + 1).padStart(5, '0'), order: index, text: text } })
   }
 
-export function splitNovelText(source, requestedSize = 500) {
-  const target = clampInt(requestedSize, 300, 800, 500)
+export function splitNovelText(source, requestedSize = 500, { preserveWhitespace = false } = {}) {
+  const target = clampInt(requestedSize, 100, 10000, 500)
   const ceiling = Math.ceil(target * 1.1)
-  const text = str(source).replace(/\r\n?/g, '\n').trim()
+  const normalized = str(source).replace(/\r\n?/g, '\n')
+  const text = preserveWhitespace ? normalized : normalized.trim()
   const chunks = []
   let start = 0, count = 0, scalarCount = 0, boundary = 0
   for (let i = 0; i < text.length;) {
@@ -58,7 +59,7 @@ export function splitNovelText(source, requestedSize = 500) {
     i += char.length; scalarCount++
     if (/\p{Script=Han}/u.test(char)) count++
     if (count >= target * .9 && /[。！？；…!?;\n]/u.test(char)) boundary = i
-    if ((count >= target && boundary === i) || count >= ceiling || scalarCount >= 4000) {
+    if ((count >= target && boundary === i) || count >= ceiling || scalarCount >= Math.max(4000, target * 4)) {
       const end = boundary > start ? boundary : i
       const body = text.slice(start, end)
       chunks.push(body)

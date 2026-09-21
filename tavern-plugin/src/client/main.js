@@ -9336,7 +9336,7 @@ window.__ModuleLoader__.load({
 						h("div", { className: "dsh-tavern-status-now" }, (view.scriptProgress.title || "剧本") + " · 游标 " + Math.min(view.scriptProgress.cursor + 1, view.scriptProgress.totalChunks) + "/" + view.scriptProgress.totalChunks + " · 已召回 " + view.scriptProgress.recalledCount + " 块")
 					) : null,
                     view.mode === "script" && view.scriptProgress ? h(ScriptNavigation, {
-                        sessionId: props.sessionId, cursor: view.scriptProgress.cursor, total: view.scriptProgress.totalChunks,
+                        sessionId: props.sessionId, cursor: view.scriptProgress.cursor, total: view.scriptProgress.totalChunks, chunkSize: view.scriptProgress.chunkSize,
                         busy: running || view.activity?.busy || view.regenInProgress
                     }) : null,
 					h("section", { className: "dsh-tavern-status-section" },

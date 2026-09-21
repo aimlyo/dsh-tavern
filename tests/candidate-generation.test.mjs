@@ -705,10 +705,19 @@ test('first candidate interrupted before a result keeps its bound session for re
 test('候选准备期间人工移动游标，旧上下文不得开始模型任务或覆盖游标', async () => {
   let run
   run = harness({ mode: 'script', outputs: [], planHook: () => {
-    run.mutateChat(chat => { chat.scriptState.cursor = 2 })
+    run.mutateChat(chat => { chat.scriptState = createScriptContinuity().transition({ script: script(), state: chat.scriptState, event: { kind: 'manual-focus', cursor: 3 } }).state })
   } })
   await assert.rejects(run.candidates.generate({ sessionId: 'session-1', messageId: 'manual-cursor' }), /剧本游标已变化/)
   assert.equal(run.modelRequests.length, 0)
   assert.equal(run.chat().scriptState.cursor, 2)
   assert.equal(run.chat().candidates, undefined)
+})
+
+test('候选准备期间修改切片字数，即使游标未变也不能继续使用旧上下文', async () => {
+  let run
+  run = harness({ mode: 'script', outputs: [], planHook: () => {
+    run.mutateChat(chat => { chat.scriptState = createScriptContinuity().transition({ script: script(), state: chat.scriptState, event: { kind: 'set-chunk-size', chunkSize: 1000 } }).state })
+  } })
+  await assert.rejects(run.candidates.generate({ sessionId: 'session-1', messageId: 'new-budget' }), /剧本游标已变化/)
+  assert.equal(run.modelRequests.length, 0)
 })

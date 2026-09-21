@@ -17,7 +17,7 @@ export function createScriptNavigation({ chats, readScript, scripts, isBusy, exc
     return { ...scripts.inspect({ script, state: chat.scriptState, request: { kind: 'browse', position } }),
       revision: chat._storageRevision, cardPath: chat.cardPath, scriptVersion: scriptToken(script) }
   }
-  async function point(sessionId, input) {
+  async function mutate(sessionId, input, event) {
     const chat = await chats.forSession(sessionId)
     check(chat)
     return exclusive(chat.id, async () => {
@@ -25,15 +25,16 @@ export function createScriptNavigation({ chats, readScript, scripts, isBusy, exc
       const token = scriptToken(script)
       const saved = await chats.update(chat.id, draft => {
         check(draft)
-        if (isBusy(draft) || draft.scriptState?.prepared) throw new Error('请等待本轮任务结束后再调整剧本游标')
+        if (isBusy(draft) || draft.scriptState?.prepared) throw new Error('请等待本轮任务结束后再修改剧本设置')
         if (input.revision === undefined || JSON.stringify(input.revision) !== JSON.stringify(draft._storageRevision)
           || input.cardPath !== draft.cardPath || draft.cardPath !== chat.cardPath) throw new Error('会话已变化，请刷新剧本列表后重试')
         if (input.scriptVersion !== token) throw new Error('剧本已更新，请刷新列表后重试')
-        draft.scriptState = scripts.transition({ script, state: draft.scriptState, event: { kind: 'manual-focus', cursor: input.position } }).state
+        draft.scriptState = scripts.transition({ script, state: draft.scriptState, event }).state
         return draft
-      }, { source: 'script.manual-focus' })
-      return { cursor: saved.scriptState.cursor, message: '已调整剧本游标，下一轮生效' }
+      }, { source: 'script.' + event.kind })
+      return { cursor: saved.scriptState.cursor, chunkSize: saved.scriptState.chunkSize || 500, message: '已保存，下一轮生效' }
     })
   }
-  return { browse, point }
+  return { browse, point: (sessionId, input) => mutate(sessionId, input, { kind: 'manual-focus', cursor: input.position }),
+    setChunkSize: (sessionId, input) => mutate(sessionId, input, { kind: 'set-chunk-size', chunkSize: input.chunkSize }) }
 }

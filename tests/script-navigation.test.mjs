@@ -65,3 +65,17 @@ test('empty and short scripts have bounded windows; a finished script can be man
   const page = h.scripts.inspect({ script: h.script, request: { kind: 'browse' } })
   assert.deepEqual([page.from, page.to, page.chunks.length], [0,0,0])
 })
+
+test('chunk budget uses the same exclusive, stale-page and busy guards as cursor changes', async () => {
+  const h = fixture(), page = await h.service.browse('session'), before = structuredClone(h.chat)
+  h.busy = true
+  await assert.rejects(h.service.setChunkSize('session', { ...page, chunkSize: 1000 }), /等待/)
+  h.busy = false
+  await assert.rejects(h.service.setChunkSize('session', { ...page, chunkSize: 10001 }), /整数/)
+  await h.service.setChunkSize('session', { ...page, chunkSize: 1000 })
+  assert.equal(h.chat.scriptState.chunkSize, 1000)
+  assert.equal(h.chat.scriptState.sourceOffset, before.scriptState.sourceOffset)
+  for (const field of ['messages', 'variables', 'candidates']) assert.deepEqual(h.chat[field], before[field])
+  assert.equal((await h.service.browse('session')).chunkSize, 1000)
+  await assert.rejects(h.service.setChunkSize('session', { ...page, chunkSize: 300 }), /已变化/)
+})
