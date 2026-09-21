@@ -5954,6 +5954,10 @@ window.__ModuleLoader__.load({
 				if (uiMode === "play" && openingPicker) setRequestMode(openingPicker.requestMode || "dsh");
 				setError("");
 				setPicking(true);
+				// Agent tools and external file edits do not emit browser-local data events.
+				void call("listCards").then(function (result) {
+					setCards(result.cards || []); tavernErrorHub.resolve("左侧栏人物卡");
+				}, function (error) { tavernErrorHub.report("左侧栏人物卡", error); });
 				void call("preparePlayStart").catch(function (error) { console.warn("dsh-tavern: 游戏启动资源预热失败，将在开始时读取", error); });
 			}
 			function closePicker() {

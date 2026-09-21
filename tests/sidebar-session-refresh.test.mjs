@@ -26,3 +26,22 @@ test('session metadata snapshots do not fan out catalog refreshes; readiness and
   render('B', { blank: false })
   assert.equal(refreshes, 3)
 })
+
+test('opening the card picker reloads cards created outside this browser', async () => {
+  const start = source.indexOf('function openPicker()');
+  const end = source.indexOf('function closePicker()', start);
+  const pickerSource = source.slice(start, end);
+  let diskCards = ['original'], cards = ['original'];
+  const sandbox = {
+    uiMode: 'play', openingPicker: null,
+    setMenuSession() {}, setCardEntry() {}, setError() {}, setPicking() {}, setRequestMode() {},
+    setCards(value) { cards = value }, console,
+    call: async method => method === 'listCards' ? { cards: [...diskCards] } : {},
+    tavernErrorHub: { resolve() {}, report() {} }
+  };
+  vm.runInNewContext(pickerSource, sandbox);
+  diskCards.push('converted');
+  sandbox.openPicker();
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(cards, diskCards, 'newly converted cards must appear without reloading the page');
+});
