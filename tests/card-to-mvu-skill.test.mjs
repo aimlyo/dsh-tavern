@@ -13,6 +13,7 @@ import { projectReplyLayers } from '../tavern-plugin/lib/domain/reply-presentati
 import { projectPersistentStatusView } from '../tavern-plugin/lib/domain/persistent-status-view.js'
 
 const root = new URL('../presets/tavern/skills/', import.meta.url)
+const skillRoot = new URL('card-to-mvu/', root)
 const backgroundRoot = new URL('../presets/tavern-background/skills/', import.meta.url)
 const definition = { initialState: {场景:{地点:'入口'},玩家:{位置:'门口'},人物:{$meta:{extensible:true,template:{姓名:'',位置:'未明确',在场:true}}}}, updateRules: '按正文事实更新玩家位置与人物档案' }
 const {entries: recipeEntries, regexScripts: recipeRegex, statusHtml} = buildMvuArtifacts(definition)
