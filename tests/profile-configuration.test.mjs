@@ -60,8 +60,8 @@ test('Profile 更新替换项目管理项并保留用户额外插件', () => {
   assert.equal(next.dependencies['user-extra-plugin'], '2.0.0')
   assert.equal(next.dependencies['dsh-web-mobile'], '2.3.0')
   assert.equal(next.dependencies['dsh-better-sidebar'], '0.16.0')
-  assert.equal(next.dependencies['dsh-tavern-plugin'], 'link:/app/tavern-plugin')
-  assert.equal(next.dependencies['dsh-tavern-remote'], 'link:/app/tavern-plugin/packages/dsh-tavern-remote')
+  assert.equal(next.dependencies['dsh-tavern-plugin'], 'link:' + path.resolve('/app/tavern-plugin').replaceAll('\\', '/'))
+  assert.equal(next.dependencies['dsh-tavern-remote'], 'link:' + path.resolve('/app/tavern-plugin/packages/dsh-tavern-remote').replaceAll('\\', '/'))
   assert.equal(next.dependencies['dsh-codex-connect'], undefined)
   assert.equal(next.dsh.customFlag, true)
   assert.deepEqual(next.dsh.profile.bundles, [

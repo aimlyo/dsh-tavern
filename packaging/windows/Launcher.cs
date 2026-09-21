@@ -15,7 +15,7 @@ using System.Runtime.InteropServices;
 
 class Launcher : Form {
  // Bump the suffix whenever patch-runtime.cjs changes; never patch a running installation.
- const string Version="5e2e365397638d61-setup1";
+ const string Version="5e2e365397638d61-setup2";
  Label label=new Label(); ProgressBar bar=new ProgressBar();
  string root, runtime, data; string[] args;
  string installedLauncher; bool showCompletion, installationSelected;
@@ -146,7 +146,8 @@ class Launcher : Form {
      using(var p=Process.Start(pi)) {char[] buf=new char[256];int n;while((n=p.StandardOutput.Read(buf,0,buf.Length))>0){var m=Regex.Match(new string(buf,0,n),@"(\d{1,3})%");if(m.Success)Status("首次准备运行环境："+m.Value,int.Parse(m.Groups[1].Value));}p.WaitForExit();if(p.ExitCode!=0)throw new Exception("解压失败，代码 "+p.ExitCode);}
      if(!File.Exists(Path.Combine(app,"DSH Desktop.exe")))throw new Exception("运行环境不完整");
      var patch=Path.Combine(stage,"patch-runtime.cjs");Resource("runtimePatch",patch);
-     var patchStart=new ProcessStartInfo(Path.Combine(app,"DSH Desktop.exe"),Quote(patch)+" "+Quote(app));
+     var packageHelper=Path.Combine(stage,"desktop-package-manager.mjs");Resource("packageHelper",packageHelper);
+     var patchStart=new ProcessStartInfo(Path.Combine(app,"DSH Desktop.exe"),Quote(patch)+" "+Quote(app)+" "+Quote(packageHelper));
      patchStart.UseShellExecute=false;patchStart.CreateNoWindow=true;patchStart.RedirectStandardError=true;
      patchStart.EnvironmentVariables["ELECTRON_RUN_AS_NODE"]="1";
      patchStart.EnvironmentVariables["TEMP"]=stage;patchStart.EnvironmentVariables["TMP"]=stage;

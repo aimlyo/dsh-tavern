@@ -324,6 +324,15 @@ try {
     [IO.File]::WriteAllText((Join-Path $AppDir '.dsh-tavern-release.json'), $ReleaseJson, (New-Object Text.UTF8Encoding($false)))
   }
 
+  if ($InstallHost -eq 'desktop') {
+    Write-Host '正在准备 Windows Desktop 包管理环境……'
+    $PackageManagerBin = (& node (Join-Path $AppDir 'bin\desktop-package-manager.mjs'))
+    Assert-LastCommand '准备 Desktop 包管理环境失败。'
+    $PackageManagerBin = ($PackageManagerBin -join "`n").Trim()
+    if (-not (Test-Path -LiteralPath (Join-Path $PackageManagerBin 'pnpm.cmd'))) { throw 'Desktop 包管理入口未生成。' }
+    $env:Path = "$PackageManagerBin;$env:Path"
+    $PnpmCommand = Join-Path $PackageManagerBin 'pnpm.cmd'
+  }
   Write-Host '正在安装程序依赖……'
   & $PnpmCommand --dir $AppDir install --frozen-lockfile
   Assert-LastCommand '程序依赖安装失败。'

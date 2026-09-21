@@ -28,3 +28,7 @@
 发布时先上传新的 `Setup.exe` 附件并核对哈希，再发布 README 新链接。保留旧 `Portable.exe`，避免覆盖旧地址和丢失可复核的构建输入。
 
 重装回归：运行 `./packaging/windows/test-reinstall.ps1 -TestDirectory D:/build/reinstall-test`。测试副本仅替换注册表读取，使用实际安装选择流程和窗体验证旧目录缺失时取消、重新安装及恢复原数据路径，不修改用户注册表。
+
+Windows 包管理修复：`setup2` 在新运行时中加入 pnpm 入口桥，包管理使用安装目录内经过官方 SHA-256 校验的独立 Node；保留 Desktop 及 DSH 适配版本。`bin/desktop-package-manager.mjs` 同时供普通 Desktop 安装脚本与 Profile 安装使用，CLI 和非 Windows 平台跳过。
+
+真实入口回归：`node packaging/windows/test-package-manager.mjs <解压后的运行时目录> <新的测试目录>`，验证依赖安装退出和失败退出码。首次会下载校验后的 Node。

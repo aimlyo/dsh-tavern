@@ -1,3 +1,4 @@
+import { prepareDesktopPackageManager } from './desktop-package-manager.mjs'
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -208,6 +209,11 @@ export async function recordInstalledRelease(options = {}) {
 }
 
 export async function installProfile(host = RUNTIME_HOST) {
+  const packageManager = await prepareDesktopPackageManager({ host, home: DSH_ROOT, onProgress: console.log })
+  if (packageManager) {
+    const key = Object.keys(process.env).find(key => key.toLowerCase() === 'path') || 'PATH'
+    process.env[key] = packageManager.bin + path.delimiter + (process.env[key] || '')
+  }
   requireCommand('node', '请安装 Node.js 22.19 或更高版本')
   requireCommand('pnpm', '请运行 npm install -g pnpm')
   verifySource()

@@ -22,7 +22,8 @@ try {
     $env:TEMP = $buildTemp; $env:TMP = $buildTemp
     $compiler = Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     $patch = Join-Path $PSScriptRoot 'patch-runtime.cjs'
-    & $compiler /nologo /target:winexe /platform:x64 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Xml.Linq.dll "/out:$Output" "/resource:$Payload,payload" "/resource:$SevenZip,seven" "/resource:$patch,runtimePatch" (Join-Path $PSScriptRoot 'Launcher.cs') (Join-Path $PSScriptRoot 'SetupDialog.cs')
+    $packageHelper = Join-Path $PSScriptRoot '../../bin/desktop-package-manager.mjs'
+    & $compiler /nologo /target:winexe /platform:x64 /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Xml.Linq.dll "/out:$Output" "/resource:$Payload,payload" "/resource:$SevenZip,seven" "/resource:$patch,runtimePatch" "/resource:$packageHelper,packageHelper" (Join-Path $PSScriptRoot 'Launcher.cs') (Join-Path $PSScriptRoot 'SetupDialog.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Launcher compilation failed' }
     Get-FileHash -LiteralPath $Output -Algorithm SHA256
 } finally {
