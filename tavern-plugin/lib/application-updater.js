@@ -87,6 +87,7 @@ async function readVerifiedRuntimeMetadata(sourceRoot) {
 
 export function sanitizeUpdateError(value) {
   const message = String(value || '').trim()
+  if (/PostQueuedCompletionStatus:\s*\(6\)/.test(message)) return '更新失败：Windows 安装子进程退出异常（PostQueuedCompletionStatus: 6，句柄无效）。请使用修复后的更新程序重试；原始详情见更新诊断日志。'
   const replacements = (message.match(/\uFFFD/g) || []).length
   if (replacements >= 2) return '更新失败：安装程序输出编码异常。建议重新安装一次。'
   return message || '更新失败，请重新安装一次。'
