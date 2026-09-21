@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "revision": "3b459c31cae476e5aa2addd03b3b383ad0dd64b5",
-  "releaseSequence": 319,
+  "revision": "5f28307da2e6009b99c8226bfac768e60b686198",
+  "releaseSequence": 320,
   "version": "2.0.0",
   "files": [
     {
@@ -266,8 +266,8 @@
     },
     {
       "path": "tavern-plugin/lib/client.js",
-      "sha256": "d889541d95fe5e2491b070268c445467eefbb47e3bfdcbd63f9228381924c94c",
-      "size": 1054818
+      "sha256": "010c3b32de1ebf575e440a052ad0a8af991fb42dc0653f968251c4cca9dcd878",
+      "size": 1054367
     },
     {
       "path": "tavern-plugin/lib/cordis-inspect.js",
@@ -3786,8 +3786,8 @@
     },
     {
       "path": "tavern-plugin/src/client/main.js",
-      "sha256": "af3f8ef17cd3db29be505fa94e3812cf6703bb47af6bdb81605b862103b03b4c",
-      "size": 772122
+      "sha256": "1a95e18a89cf81b3d06610f9b534ea49a192b5f6b19d777bc0569a35530baacb",
+      "size": 771894
     },
     {
       "path": "tavern-plugin/src/client/modules/confirm-dialog.js",
@@ -3831,8 +3831,8 @@
     },
     {
       "path": "tavern-plugin/src/client/modules/retained-message-frames.js",
-      "sha256": "64a07e5a5cdcd411910e8aa5d957dc36cd36841b3caafeea58d10643b1de8703",
-      "size": 8915
+      "sha256": "046670e6ec7b912af7fe8a4b21120f0c10863effe28bf794b85b5e23d2b2fc61",
+      "size": 8694
     },
     {
       "path": "tavern-plugin/src/client/modules/runtime-generation-monitor.js",
