@@ -99,6 +99,8 @@ test('Skill 配方可构造可导入卡，规则分流、状态显示及模型�
     { role: 'assistant', turn: 1, displayRuntime: { frames: [{ partIndex: index, mvuViewUsed: true }] } }
   ], [{ turn: 1, parts: layers.displayParts }], { regexScripts: extensions.regexScripts })
   assert.ok(result.statusView?.content.includes('Mvu.getMvuData'))
+  assert.equal(result.statusViews.length, 1)
+  assert.ok(result.projections[0].parts.every(part => part.kind !== 'html'))
 })
 
 test('通用状态模板重新读取变量并刷新 DOM，支持新增与恢复且跳过内部字段', async () => {

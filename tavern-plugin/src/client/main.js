@@ -8665,7 +8665,7 @@ window.__ModuleLoader__.load({
 					turn: Math.max(1, Number(statusView.targetTurn) || 1), partIndex: Math.max(0, Number(statusView.sourcePartIndex) || 0),
 					panelId: statusView.viewId, helperContext: view.tavernHelper,
 					trustedCardMode: Boolean(view.tavernRuntimePolicy && view.tavernRuntimePolicy.trustedCardMode),
-					eager: true, persistent: true, followContentFont: false, executeSlash: props.executeSlash,
+					eager: true, persistent: true, followContentFont: true, executeSlash: props.executeSlash,
 					observeMvuView: false, runtimeReporting: true
 				})); }),
 				manual.map(function (entry) { return h("div", { key: entry.id, role: "tabpanel", hidden: active !== entry.id },

@@ -87,7 +87,9 @@ const statusRegex = [
 const data = Mvu.getMvuData({ type: 'message', message_id: 'latest' }).stat_data;
 ```
 
-读取该 API 是 DSH 识别 MVU 视图并提升到右侧持久状态面板的信号，不只是在正文画一个 HTML 框。不能只在启动时读一次快照后一直用旧对象。
+`<mvu-status/>` 的显示正则是持久面板的用途声明；`Mvu.getMvuData` 只读取数据，并不是提升到右侧的信号。正则 `id` 必须固定且在该卡中唯一，修改模板或调整顺序时不要换 ID，也不要同时保留两条状态显示规则。不能只在启动时读一次快照后一直用旧对象。
+
+固定 HTML 的状态值通过 Helper 在重绘时读取，不用 EJS 生成动态面板或执行变量写入。宿主可替换固定面板模板，同时保留历史正文和已经求值的 EJS；含 EJS 的旧面板不保证在修改模板后重新求值。不要删除历史 `template_display` 缓存来强制刷新，这可能重复执行历史副作用。
 
 已验证的简易订阅方式是：去重订阅 `Mvu.events.VARIABLE_INITIALIZED`、`Mvu.events.VARIABLE_UPDATE_ENDED` 和 `Object.values(tavern_events)`，回调只重绘。这样同时覆盖结算与消息恢复事件；复杂卡可缩小订阅集合，但应验证回退/重新生成。
 
@@ -98,3 +100,5 @@ const data = Mvu.getMvuData({ type: 'message', message_id: 'latest' }).stat_data
 这条路线的首张航空测试副本已验证：导入、官方初始化、后台真实结算、右侧显示；宿主修复 `3e5a4fd` 后用户确认自动刷新，回退自动刷新此前亦已验证。它不是任意题材、复杂脚本、多开场或原生 SillyTavern 的全覆盖证明。
 
 交付另一张卡时仍完成其自己的字段映射与验收；遇到宿主缺陷说明已知原因，不在卡片中加入一套重复运行时。
+
+配方验收还需覆盖：开场与推进后均为一个右侧面板、正文无重复 HTML；字号调整后面板一致缩放；会话切换和恢复正常；保留规则 ID，修改固定模板并调整正则顺序后面板仍唯一且显示新版。仓库回归测试覆盖显示链路和模板数据刷新，不能替代目标卡的真实后台结算、多开场与复杂脚本实测。

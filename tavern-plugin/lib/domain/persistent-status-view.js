@@ -1,3 +1,4 @@
+import { statusViewDeclaration } from './status-view-declaration.js'
 import { createHash } from 'node:crypto'
 import { applyTavernRegexText } from './tavern-regex-display.js'
 import { projectDisplayParts, resolveDisplayIdentityMacros } from './reply-presentation.js'
@@ -18,35 +19,49 @@ function projectStatusView(messages, projections, options, compile) {
     if (message?.role === 'assistant') latestTurn = Math.max(latestTurn, Number(message.turn) || inferredTurn)
   }
   const templates = new Map()
-  const statusRules = new Set()
-  for (const [ruleIndex, rule] of (Array.isArray(options.regexScripts) ? options.regexScripts : []).entries()) {
-    if (!rule || rule.disabled === true) continue
-    const pattern = String(rule.findRegex || '')
-    const namedStatus = pattern.match(/<([a-z][a-z0-9-]*-status)\b/i)
-    const marker = pattern.includes('StatusPlaceHolderImpl') ? '<StatusPlaceHolderImpl/>' : namedStatus ? '<' + namedStatus[1] + '/>' : ''
-    if (!marker) continue
-    for (const { content, revision } of compile(marker, rule, options)) {
+  const removedParts = new Set()
+  const rules = Array.isArray(options.regexScripts) ? options.regexScripts : []
+  const enabled = rules.filter(rule => rule && rule.disabled !== true && rule.enabled !== false)
+  function legacyMatches(part, projection, rule) {
+    if (!Number.isInteger(part.statusRule)) return false
+    const message = sourceMessages.find(message => message.role === 'assistant' && (Number(message.turn) || 1) === projection.turn)
+    const source = String(message?.sourceText ?? message?.text ?? '')
+    // Old captures have only an array index. Recover solely when the original
+    // source names exactly one status declaration; never guess from MVU reads.
+    const candidates = enabled.filter(candidate => statusViewDeclaration(candidate) && applyTavernRegexText(source, [candidate], { placement: 2, isMarkdown: true, depth: 0 }).changed)
+    return candidates.length === 1 && candidates[0] === rule
+  }
+  for (const rule of rules) {
+    if (!rule || rule.disabled === true || rule.enabled === false) continue
+    const declaration = statusViewDeclaration(rule)
+    if (!declaration) continue
+    for (const [templateIndex, { content, revision }] of compile(declaration.marker, rule, options).entries()) {
       if (templates.has(revision)) continue
       let origin = null
       let templateContent = content
+      const viewId = 'status-' + createHash('sha256').update(declaration.key + ':' + templateIndex).digest('hex').slice(0, 16)
       for (const projection of sourceProjections) {
         const parts = (projection.parts || []).filter(part => String(part.kind === 'html' ? contentOf(part) : part.text || '').trim())
-        const index = parts.findIndex(part => part.kind === 'html' && (part.statusRule === ruleIndex || contentOf(part) === content))
+        const matches = part => part.kind === 'html' && (part.statusKey ? part.statusKey === declaration.key : contentOf(part) === content || legacyMatches(part, projection, rule))
+        const index = parts.findIndex(matches)
         if (index >= 0) {
-          if (parts[index].statusRule === ruleIndex) statusRules.add(ruleIndex)
+          for (const part of parts.filter(matches)) removedParts.add(part)
           origin = { sourceTurn: projection.turn, sourcePartIndex: index }
-          templateContent = resolveDisplayIdentityMacros(contentOf(parts[index]), options)
+          // Fixed HTML follows the latest card template. Stateful EJS history
+          // and source-dependent regex replacements retain their captured output;
+          // do not replay historical side effects or serve raw EJS.
+          if (/<%|&lt;%|\$(?:[1-9]|&|`|')/.test(String(rule.replaceString))) templateContent = resolveDisplayIdentityMacros(contentOf(parts[index]), options)
         }
       }
       if (!origin) {
         for (const message of sourceMessages) {
-          const frame = message.displayRuntime?.frames?.find(frame => frame.placement === 'sidebar' && frame.panelId === 'status-' + revision)
+          const frame = message.displayRuntime?.frames?.find(frame => frame.placement === 'sidebar' && (frame.panelId === viewId || frame.panelId === 'status-' + revision))
           if (frame) origin = { sourceTurn: Number(message.turn) || 1, sourcePartIndex: Number(frame.partIndex) || 0 }
         }
       }
       if (latestTurn <= 1 && !origin) continue
       templates.set(revision, {
-        version: 1, viewId: 'status-' + revision,
+        version: 1, viewId,
         title: String(rule.name || rule.scriptName || '角色状态').slice(0, 80),
         sourceTurn: origin?.sourceTurn || latestTurn, sourcePartIndex: origin?.sourcePartIndex || 0,
         targetTurn: latestTurn, templateRevision: revision, content: templateContent
@@ -58,7 +73,7 @@ function projectStatusView(messages, projections, options, compile) {
 
   return {
     projections: sourceProjections.map(projection => {
-      const parts = (projection.parts || []).filter(part => !(part.kind === 'html' && (contents.has(contentOf(part)) || statusRules.has(part.statusRule))))
+      const parts = (projection.parts || []).filter(part => !(part.kind === 'html' && (contents.has(contentOf(part)) || removedParts.has(part))))
       return parts.length === (projection.parts || []).length ? projection : { ...projection, parts, text: parts.map(part => part.kind === 'html' ? contentOf(part) : part.text || '').join('') }
     }),
     statusView: statusViews[0] || null,

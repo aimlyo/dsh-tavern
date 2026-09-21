@@ -83,7 +83,9 @@ test('开场状态入口被模板同步移除后，已显示过的同一声明�
   const next = projectPersistentStatusView(messages, [], { regexScripts: [rule] })
   assert.equal(next.statusView.viewId, initial.statusView.viewId)
   assert.equal(projectPersistentStatusView(messages, [], { regexScripts: [{ ...rule, enabled: false }] }).statusView, null)
-  assert.equal(projectPersistentStatusView(messages, [], { regexScripts: [{ ...rule, replaceString: '<script>other()</script>' }] }).statusView, null)
+  const edited = projectPersistentStatusView(messages, [], { regexScripts: [{ ...rule, replaceString: '<script>other()</script>' }] }).statusView
+  assert.equal(edited.viewId, initial.statusView.viewId)
+  assert.match(edited.content, /other/)
 })
 
 test('状态模板复用编译，但旧消息来源、最新轮次、规则和身份变化仍生效', async () => {
@@ -113,4 +115,27 @@ test('状态模板复用编译，但旧消息来源、最新轮次、规则和�
   rule.disabled=false
   assert.deepEqual(uncached(messages, [], options), project(messages, [], options))
   assert.equal(uncached.cacheStats().entries,0)
+})
+
+
+test('旧数值来源只在原文唯一声明时迁移，未知 HTML 不被误删', () => {
+  const rule = { id: 'mvu-status-view', placement: [2], markdownOnly: true, findRegex: '<mvu-status/>', replaceString: '<script>newStatus()</script>' }
+  const old = { kind: 'html', content: '<script>oldStatus()</script>', statusRule: 7 }
+  const unrelated = { kind: 'html', content: '<script>opening()</script>' }
+  const messages = [{ role: 'assistant', turn: 1, text: '开场<mvu-status/>' }]
+  const result = projectPersistentStatusView(messages, [projection(1, [old, unrelated])], { regexScripts: [rule] })
+  assert.match(result.statusView.content, /newStatus/)
+  assert.deepEqual(result.projections[0].parts, [unrelated])
+  const ambiguous = projectPersistentStatusView(messages, [projection(1, [old, unrelated])], { regexScripts: [rule, { ...rule, id: 'another', replaceString: '<script>another()</script>' }] })
+  assert.equal(ambiguous.statusViews.length, 0)
+  assert.deepEqual(ambiguous.projections[0].parts, [old, unrelated])
+})
+
+
+test('带原文捕获替换的面板保留求值结果', () => {
+  const rule = { id: 'captured-status', placement: [2], markdownOnly: true, findRegex: '/<mvu-status\\s*\\/>/g', replaceString: '<script>show("$&")</script>' }
+  const content = '<script>show("captured")</script>'
+  const result = projectPersistentStatusView([{role:'assistant',turn:1}], [projection(1,[{kind:'html',content,statusKey:'id:captured-status'}])], {regexScripts:[rule]})
+  assert.equal(result.statusView.content,content)
+  assert.deepEqual(result.projections[0].parts,[])
 })

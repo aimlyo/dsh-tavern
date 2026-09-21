@@ -32,7 +32,8 @@ export function captureTemplateDisplay(message, index) {
     const target = status ? element : element.parentElement
     const range = document.createRange(); range.setStart(root,0); range.setEndBefore(target)
     const prefix = document.createElement('template'); prefix.content.append(range.extractContents()); append(prefix.innerHTML)
-    if (status) parts.push({kind:'html',content:element.innerHTML,statusRule:Number(element.getAttribute('data-dsh-template-status'))})
+    if (status) parts.push({kind:'html',content:element.innerHTML,statusRule:Number(element.getAttribute('data-dsh-template-status')),
+      statusKey: element.hasAttribute('data-dsh-status-key') ? decodeURIComponent(element.getAttribute('data-dsh-status-key')) : undefined})
     else append(element.textContent)
     target.remove()
   }

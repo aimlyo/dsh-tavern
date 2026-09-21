@@ -1,3 +1,4 @@
+import { statusViewDeclaration } from '../../../domain/status-view-declaration.js'
 import { executeTemplateSlash } from './commands.js'
 import { createTemplateDOMServices } from './dom.js'
 import { renderTavernMacros } from '../../../domain/tavern-macro-engine.js'
@@ -22,9 +23,10 @@ export function createTemplateServices(context, rpc) {
     getRegexedString(value, placement, options = {}) {
       const scripts = [...(context()?.dsh?.regexScripts || []), ...(extension_settings.regex || [])]
       const displayScripts = options.statusBoundaries ? scripts.map((rule, index) => {
-        if (!/StatusPlaceHolderImpl|<[a-z][a-z0-9-]*-status\b/i.test(rule.findRegex || '') || !/<(?:script|iframe|object|embed)\b/i.test(rule.replaceString || '')) return rule
+        const declaration = statusViewDeclaration(rule)
+        if (!declaration || !/<(?:script|iframe|object|embed)\b/i.test(rule.replaceString || '')) return rule
         const content = String(rule.replaceString).replace(/^\s*```(?:html|htm)?\s*\n([\s\S]*?)\n```\s*$/i, '$1')
-        return {...rule,replaceString:`<div data-dsh-template-status="${index}">${content}</div>`}
+        return {...rule,replaceString:`<div data-dsh-template-status="${index}" data-dsh-status-key="${encodeURIComponent(declaration.key)}">${content}</div>`}
       }) : scripts
       return applyTavernRegexText(value, displayScripts, { ...options, placement }).text
     },
