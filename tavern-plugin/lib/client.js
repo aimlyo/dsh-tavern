@@ -6644,7 +6644,6 @@ window.__ModuleLoader__.load({
 		            try { tavernPanelRegistry.pin(panelId, !pinned); }
 		            catch (error) { tavernErrorHub.report("固定面板", error); }
 		        } }, pinned ? "返回原消息" : "固定到右侧") : null,
-		        React.createElement("button", { type: "button", className: "dsh-tavern-btn", disabled: !activated, title: "全屏查看人物卡界面，按 Esc 返回", onClick: () => lease.current?.expand() }, "展开大屏"),
 		        React.createElement("div", { ref: home, style: { minHeight: activated ? undefined : estimatedTavernFrameHeight(props.content) + "px" } }));
 		}
         const tavernRetainedFrames = createRetainedTavernFrames({ window: window, retention: tavernSessionRetention,
@@ -6826,7 +6825,6 @@ window.__ModuleLoader__.load({
 					try { setActivated(true); tavernPanelRegistry.pin(panelKey.current, !pinned); }
 					catch (error) { tavernErrorHub.report("固定面板", error); }
 				} }, pinned ? "返回原消息" : "固定到右侧") : null,
-				React.createElement("button", { type: "button", className: "dsh-tavern-btn", disabled: !activated, title: "全屏查看人物卡界面，按 Esc 返回", onClick: () => expandTavernFrame(slotRef.current) }, "展开大屏"),
 				React.createElement("div", { ref: homeRef },
 					React.createElement("div", { ref: slotRef, className: "dsh-tavern-message-frame-slot", style: { position: "relative", height: height + "px" } }, frames)));
 
