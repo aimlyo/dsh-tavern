@@ -3105,6 +3105,16 @@ export async function apply(ctx) {
         const settings = await readTavernSettings()
         return { sessions: await listTavernSessions(), capabilities: { compatibilityMode: true, trustedCardMode: settings.trustedCardMode } }
       }
+      case 'renameConversation': {
+        const chat = await chatForSession(args && args.sessionId)
+        if (!chat) throw new Error('当前会话没有绑定 Tavern 对话')
+        const title = str(args && args.title)
+        const saved = await updateChat(chat.id, current => ({ ...current, title }), { source: 'conversation.rename' })
+        // Renaming must not report success while the sidebar still has an old title.
+        // The normal updateChat summary sync is best effort; retry it strictly here.
+        await conversationRegistry.sync(saved)
+        return { title: saved.title }
+      }
       case 'markConversationOpened': return await conversationRegistry.touch(args && args.sessionId, Date.now())
       case 'listMobileCardImports': return await mobileCardImport.list()
       case 'importMobileCard': return { card: await importCard(await mobileCardImport.read(args && args.id)) }

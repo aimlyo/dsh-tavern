@@ -8681,6 +8681,8 @@ window.__ModuleLoader__.load({
 						if (session === undefined) throw new Error("找不到该对话");
 						const result = await session.rename(title);
 						if (!result.ok) throw new Error(result.error.message);
+						await rpc("renameConversation", { sessionId: sessionId, title: title }, sessionId);
+						notifyTavernDataChanged(["sessions"], "conversation.rename");
 					},
 					archiveSession: function (sessionId) { return ctx.workspaces.archiveSession(sessionId); },
 					toggleSidebar: function () { if (props.wide) ctx.layout.toggleSidebar(); else props.expandSidebar(); },
