@@ -9,7 +9,9 @@ description: "把正文内输出状态栏的 SillyTavern 人物卡转换为 DSH 
 
 ## 1. 读取转换底稿
 
-确定原卡 `sourcePath`，调用转换工具 `action: "inspect"`。默认返回字段目录、版本号和能力边界；用 `action: "read"`、`path` 和 `sourceRevision` 按需读取字段，按 `nextOffset` 续读。用 `action: "search"`、`query` 查找原文片段。路径相对于 source 对象，世界书为实际生效内容的独立合并结果；原来未生效的内置世界书用 `scope: "preservedWorldbook"` 查看，不自动启用。只有小卡需要 `detail: "full"`。
+确定原卡 `sourcePath`，调用 `action: "inspect"`。默认 reading 一次返回有长度预算的原文、字段路径、版本和目标占名状态。先读这份底稿；仅对 `nextOffset` 非空或 `deferred` 中与任务相关的字段补读，优先用 `action: "read"` 的 `paths` 一次读取多个字段。单个长字段按 `nextOffset` 续读；定位片段才用 search。summary 仅适合复查版本，full 仅适合小卡。
+
+source/target 都是工具解析后的规范化生效字段；世界书为实际绑定内容的合并底稿。不另用 Bash 解析磁盘 raw/data 镜像。原来未生效的内置世界书可用 scope=preservedWorldbook 查看，不自动启用。若 destination.available=false，先换副本名称再定义方案。
 
 先核对用户要求与 capabilities：固定面板不支持原皮肤复刻；多开场共享一份初值。用户明确要求保留视觉风格，或开场事实不能共用初值时，先说明缺口并确定替代方案；未解决前不交付为完整转换。
 
@@ -43,16 +45,16 @@ description: "把正文内输出状态栏的 SillyTavern 人物卡转换为 DSH 
 
 ## 4. 应用并验收
 
-先调用 `action: "preview"`，传回 `sourceRevision` 和转换内容。它按同一流程生成和检查，但不落盘。检查 `validation.changes` 中每项删除，确认标签协议残留已消除、剧情条目没有误删。用户已授权转换且原卡唯一时，用同样参数调用 `action: "apply"` 保存独立副本。复用同一 `sourcePath` 和 `name`；更新已有副本还需 inspect 返回的 `targetRevision`。工具保存封面、世界书和绑定；原卡及共享资源保持不变。
+用户已授权转换且原卡唯一时，直接 apply，传回 sourceRevision 和转换内容。apply 内置预检、原子保存和磁盘验收；只有清理定位或删除范围尚有疑问时才额外 preview，不把 preview→apply→validate 作为必跑三步。复用同一 sourcePath 和 name；更新已有副本需要 targetRevision。原卡和共享资源保持不变。
 
 已有副本默认合并已保存方案：省略的变量定义和清理操作继续保留，新 cleanup 追加并去重。纠正同字段操作时，以 `cleanupResetPaths` 清除该路径旧操作，再提交新操作。只有主动重做整个方案才选 `planMode: "replace"`，此时必须提交完整定义和全部清理。用 `scope: "plan"` 读取已保存方案；旧版副本缺少方案或原卡已变化时，按工具提示提交完整替换方案。
 
 失败时按具体错误修正。版本不符重新 inspect；定位错误按返回的 operation、anchor、matches 和 candidates 读取来源片段：0 次表示缺失，多个匹配表示边界不唯一。重复结束标签使用包含独特上下文的较长边界，再 preview；保留原始换行。已有 MVU 规则先判断复用/合并方案，不能为通过检查盲删。不要改用通用写文件工具绕过冲突检查。
 
-对返回路径调用 `tavern_validate_mvu_conversion`，分别报告：
+以 apply 返回的 validation 为验收结果；仅成品后来发生修改或具体失败需要复查时，才调用 tavern_validate_mvu_conversion。分别报告：
 
 - 自动检查：格式、实际绑定、初值定义、后台分流、每个开场、面板唯一性、模型历史隔离、方案外修改、已识别旧渲染协议残留，以及固定模板的 DOM 更新/恢复模拟。旧协议检测仅覆盖已修改来源正则的显式标签，未知格式仍需逐项确认。
 - 内容清理：依据验收的 `changes`、`removedEntries`、`preservedEntries` 清单报告实际删除位置和条目名称，再列保留的剧情交互、候选项检查与尚未确定的位置；不能把已删除条目报告为保留。
 - 真实验收：获准的独立测试对话中检查官方初始化、后台工具提交、结算回执与落库值；检查右侧自动刷新、字号、会话切换、无变化回合、集合新增、回退或重新生成。工具的 `valid: true` 仅代表自动检查通过，不代表这些项目实测完成。思考文字和 `accepted: true` 不等于结算成功。
 
-无法实测时明确列出待验证项目，交付副本路径和简短操作步骤。仅编辑本 Skill 不触发人物卡转换或模型游玩。
+保存成功、自动检查通过且删除清单符合任务后，直接交付。pending 是未执行的真实游玩项目，不是继续搜索全局预设、脚本或重复读磁盘的待办。无法实测时列出待验证项目和副本路径。仅编辑本 Skill 不触发人物卡转换或模型游玩。

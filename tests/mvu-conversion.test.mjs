@@ -355,7 +355,7 @@ test('大卡与已有副本目录保持简短，按需分页不丢换行且可�
   const f=await fixture(t), doc=await f.resources.readCard(f.sourcePath)
   cardData(doc).scenario='长文\r\n'.repeat(30000)
   await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc));await f.apply()
-  const inspection=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  const inspection=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath,detail:'summary'})
   assert.ok(JSON.stringify(inspection).length<8000)
   const args={sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,targetRevision:inspection.targetRevision}
   const page=await f.conversion.convert({...args,action:'read',path:'/scenario',limit:8})
@@ -400,4 +400,59 @@ test('替换整个世界书数组仍列出实际误删的禁用剧情条目',asy
   assert.ok(result.validation.removedEntries.some(x=>x.label==='禁用的剧情分支'&&x.enabled===false))
   assert.ok(result.validation.preservedEntries.some(x=>x.label==='原设定'))
   assert.equal(result.validation.preservedEntries.some(x=>x.label==='禁用的剧情分支'),false)
+})
+
+test('默认底稿一次带齐短字段和开场，长字段标明续读，支持批量原文',async t=>{
+  const f=await fixture(t),doc=await f.resources.readCard(f.sourcePath)
+  cardData(doc).scenario='长脚本'.repeat(15000)
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc))
+  const report=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  assert.equal(report.reading.fields.find(x=>x.path==='/first_mes').text,original().data.first_mes)
+  assert.ok(report.reading.fields.find(x=>x.path==='/scenario').nextOffset>0)
+  assert.ok(Buffer.byteLength(JSON.stringify(report.reading),'utf8')<26000)
+  const batch=await f.conversion.convert({action:'read',sourcePath:f.sourcePath,sourceRevision:report.sourceRevision,paths:['/first_mes','/alternate_greetings/0']})
+  assert.deepEqual(batch.readings.map(x=>x.text),[original().data.first_mes,original().data.alternate_greetings[0]])
+  const root=await f.conversion.convert({action:'read',sourcePath:f.sourcePath,sourceRevision:report.sourceRevision,path:'/'})
+  assert.ok(root.catalog.some(x=>x.path==='/first_mes'))
+})
+
+test('定位类型和重叠错误直接指出可修正路径及冲突操作',()=>{
+  assert.throws(()=>applyMvuCleanup({character_book:{entries:[{content:'正文'}]}},[{op:'replaceText',path:'/character_book/entries/0',expected:'正文',value:''}]),e=>{
+    assert.equal(e.code,'CLEANUP_TYPE_MISMATCH');assert.equal(e.details.suggestedPath,'/character_book/entries/0/content');return true
+  })
+  assert.throws(()=>applyMvuCleanup({first_mes:'头正文尾'},[{op:'replaceBlock',path:'/first_mes',start:'头',end:'尾',value:''},{op:'replaceText',path:'/first_mes',expected:'正文',value:''}]),e=>{
+    assert.equal(e.code,'CLEANUP_OVERLAP');assert.deepEqual(e.details.operations,[0,1]);return true
+  })
+})
+
+test('只剩原版资源时 inspect 和 preview 提前报告名称冲突',async t=>{
+  const f=await fixture(t),result=await f.apply()
+  await rm(f.resources.absolute(result.path))
+  const inspection=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  assert.equal(inspection.destination.available,false)
+  await assert.rejects(f.conversion.convert({action:'preview',sourcePath:f.sourcePath,...inspection,...definition()}),/副本原版资源已存在/)
+})
+
+test('DSH 无损快照和输出 schema 校验覆盖已有、损坏副本与验收', {skip:!process.env.DSH_BOOT_MODULE},async t=>{
+  const {pathToFileURL}=await import('node:url')
+  const root=pathToFileURL(process.env.DSH_BOOT_MODULE)
+  const {snapshotJsonValue}=await import(new URL('../../dsh-util-values/lib/index.js',root))
+  assert.equal(snapshotJsonValue({report:{target:{error:undefined}}}),undefined,'the logged undefined-field regression is rejected at this boundary')
+  const {defineTool,validateJsonSchemaValue}=await import(new URL('../../dsh-tools/lib/index.js',root))
+  const f=await fixture(t),registered=new Map()
+  registerMvuConversionTools({tools:{register:x=>registered.set(x.name,x)},defineTool,conversion:f.conversion,chatForSession:async()=>({mode:'card'})})
+  const tool=registered.get('tavern_convert_to_mvu')
+  async function check(args){
+    const value=await tool.execute(args,{})
+    assert.notEqual(snapshotJsonValue(value),undefined,'same lossless snapshot used by ToolRuntime')
+    assert.deepEqual(validateJsonSchemaValue(tool.output.schema,value),[])
+    assert.notEqual(snapshotJsonValue(tool.output.render(args,value)),undefined)
+  }
+  const result=await f.apply()
+  await check({action:'inspect',sourcePath:f.sourcePath})
+  await check({action:'inspect',sourcePath:f.sourcePath,detail:'full'})
+  const validation=await registered.get('tavern_validate_mvu_conversion').execute({path:result.path},{})
+  assert.notEqual(snapshotJsonValue(validation),undefined)
+  await f.resources.writeWorking(result.path,'{')
+  await check({action:'inspect',sourcePath:f.sourcePath,detail:'full'})
 })

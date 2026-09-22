@@ -11,13 +11,14 @@ export function registerMvuConversionTools({ tools, defineTool, conversion, chat
   }
   tools.register(defineTool({
     name: 'tavern_convert_to_mvu',
-    description: '将人物卡转换为独立 MVU 副本。先 inspect 获取精简目录和版本，再 read/search 按需读取；preview 预检不保存，用户授权转换后 apply。已有副本默认合并已保存方案，省略的定义与清理保留。工具从磁盘复制整卡后清理并追加 MVU；参数仅提交改动和变量定义，不回传原卡或保留内容。工具负责初值/后台规则、固定面板、每个开场入口、模型历史隔离与绑定，不需要手写 HTML 或正则。同一来源和名称可重复调用；更新现有副本须提供 inspect 返回的 targetRevision。',
+    description: '将人物卡转换为独立 MVU 副本。先 inspect 一次获取有预算的原文和版本，仅缺失长字段用 read.paths 批量补读。apply 已内置预检、原子保存和磁盘验收；仅有定位疑问时额外 preview。已有副本默认合并已保存方案，省略的定义与清理保留。工具从磁盘复制整卡后清理并追加 MVU；参数仅提交改动和变量定义，不回传原卡或保留内容。工具负责初值/后台规则、固定面板、每个开场入口、模型历史隔离与绑定，不需要手写 HTML 或正则。同一来源和名称可重复调用；更新现有副本须提供 inspect 返回的 targetRevision。',
     parameters: {
       action: { type: 'string', required: true, enum: ['inspect', 'read', 'search', 'preview', 'apply'] },
       sourcePath: { type: 'string', required: true, description: '原卡 cards/... 路径；始终保留原卡' },
-      detail: { type: 'string', enum: ['summary','full'], description: 'inspect 默认 summary 只返回目录；full 返回整卡及副本，仅小卡需要' },
+      detail: { type: 'string', enum: ['reading','summary','full'], description: 'inspect 默认 reading 一次返回有预算的原文；summary 仅目录，full 为完整原卡及副本' },
       scope: { type: 'string', enum: ['source','target','plan','preservedWorldbook'], description: 'read/search 默认 source；target/plan 还需 targetRevision，路径均相对于该对象' },
       path: { type: 'string', description: 'read/search 的 JSON Pointer；空串为根目录，read 对象返回子目录，字符串分页返回 text' },
+      paths: { type:'array', items:{type:'string'}, description:'read 可批量读取 1–20 个字段，省去逐项往返；总原文预算 12000 字符' },
       query: { type: 'string', description: 'search 必填：原文片段，非正则，最多 1000 字符' },
       offset: { type: 'number', description: 'read 的字符/目录起点，search 的匹配结果起点；使用返回的 nextOffset 续读' },
       limit: { type: 'number', description: '每页上限：字符串 8000 字符、目录 100 项、搜索 40 项' },

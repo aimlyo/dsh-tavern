@@ -3,7 +3,7 @@ import { pointerKeys } from './mvu-conversion-artifacts.js'
 
 const escape = key => String(key).replace(/~/g, '~0').replace(/\//g, '~1')
 export function valueAt(value, path) {
-  if (path === '' || path === undefined) return value
+  if (path === '' || path === undefined || (path === '/' && !Object.hasOwn(value || {}, ''))) return value
   for (const key of pointerKeys(path)) {
     if (!value || !Object.hasOwn(value, key)) throw Error('读取路径不存在: ' + path)
     value = value[key]
@@ -19,6 +19,7 @@ function describe(value, path) {
     } : {}) }
 }
 export function catalog(value, path = '') {
+  if (path === '/' && !Object.hasOwn(value || {}, '')) path = ''
   const selected = valueAt(value, path)
   if (!selected || typeof selected !== 'object') return [describe(selected, path)]
   return Object.entries(selected).map(([key, child]) => describe(child, path + '/' + escape(key)))
@@ -29,6 +30,7 @@ function bounded(value, fallback, maximum) {
   return Math.min(value, maximum)
 }
 export function readConversionValue(value, { path = '', offset, limit }) {
+  if (path === '/' && !Object.hasOwn(value || {}, '')) path = ''
   const selected = valueAt(value, path), start = bounded(offset, 0, Number.MAX_SAFE_INTEGER)
   const text = typeof selected === 'string'
   const count = Math.max(1, bounded(limit, text ? 4000 : 50, text ? 8000 : 100))
@@ -41,6 +43,7 @@ export function readConversionValue(value, { path = '', offset, limit }) {
   return { path, text: selected.slice(start, end), offset: start, total: selected.length, nextOffset: end < selected.length ? end : null }
 }
 export function searchConversionValue(value, { query, path = '', offset, limit }) {
+  if (path === '/' && !Object.hasOwn(value || {}, '')) path = ''
   if (typeof query !== 'string' || !query || query.length > 1000) throw Error('query 必须为 1–1000 字符的原文片段')
   const skip = bounded(offset, 0, Number.MAX_SAFE_INTEGER), count = Math.max(1, bounded(limit, 20, 40))
   let total = 0; const matches = []
@@ -83,10 +86,32 @@ export function cleanupAudit(source, cleanup, output) {
   const remainingEntries = output.character_book?.entries || []
   const removedEntries = [], preservedEntries = []
   for (const [index, entry] of (source.character_book?.entries || []).entries()) {
-    const row = {path:'/character_book/entries/'+index,label:String(entry.comment || entry.name || '').slice(0,160),enabled:entry.enabled}
+    const row = {path:'/character_book/entries/'+index,label:String(entry.comment || entry.name || '').slice(0,160),...(typeof entry.enabled === 'boolean' ? {enabled:entry.enabled} : {})}
     if (remainingEntries.some(current => isDeepStrictEqual(current,entry))) preservedEntries.push(row)
     else if (!remainingEntries.some(current => current.id === entry.id && !/^\s*\[(?:initvar|mvu_update)\]/i.test(current.comment || current.name || ''))) removedEntries.push(row)
   }
   return { changes, removedEntries, preservedEntries, residuals, check: {name:'legacyResidue',status:residuals.length ? 'failed' : 'passed',
     detail:residuals.length ? '旧渲染协议残留: '+JSON.stringify(residuals) : '未发现来源正则中可识别的标签协议残留；其他格式需人工确认'} }
+}
+
+// A bounded reading pack avoids a model round trip for every object container.
+export function conversionReading(value) {
+  const fields = [], deferred = []; let deferredCount = 0
+  const relevant = ['description','personality','scenario','system_prompt','post_history_instructions','first_mes','alternate_greetings','mes_example','character_book','extensions']
+  function visit(child, path) {
+    if (typeof child === 'string' && child.length) {
+      const length = Math.min(child.length, 4000)
+      const item = {path,text:child.slice(0,length),total:child.length,nextOffset:length<child.length ? length : null}
+      if (Buffer.byteLength(JSON.stringify({fields:[...fields,item],deferred}), 'utf8') < 20000 && fields.length < 80) fields.push(item)
+      else { deferredCount++; if(deferred.length<40) deferred.push({path,total:child.length}) }
+    } else if (child && typeof child === 'object') {
+      for(const [key, item] of Object.entries(child)) visit(item,path+'/'+escape(key))
+    }
+  }
+  for(const key of relevant) if(value[key] !== undefined) visit(value[key],'/'+key)
+  return {fields,deferred,deferredCount,instruction:'已含可读原文；只续读 nextOffset 非空或 deferred 的必要字段，可用 paths 批量读取。'}
+}
+export function readConversionBatch(value,args) {
+  if (!Array.isArray(args.paths) || !args.paths.length || args.paths.length>20) throw Error('paths 必须包含 1–20 个 JSON Pointer')
+  return {readings:args.paths.map(path=>readConversionValue(value,{...args,path,limit:Math.min(args.limit ?? 4000,Math.floor(12000/args.paths.length))}))}
 }

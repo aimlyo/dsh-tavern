@@ -4,7 +4,7 @@
 
 ## 调用示例
 
-先 inspect 取得 catalog、sourceRevision；用 read/search 读取 source 底稿。更新已有副本时还需 targetRevision；用 scope=plan 看方案、scope=target 看副本。
+先 inspect 一次取得 reading 原文、catalog、sourceRevision 和 destination；仅补读未完整展示的必要字段，read 的 paths 可批量读。更新已有副本时还需 targetRevision；用 scope=plan 看方案、scope=target 看副本。
 
 ```json
 {"action":"inspect","sourcePath":"cards/原卡.json","name":"原卡 MVU版本"}
@@ -16,9 +16,9 @@
 {"action":"read","sourcePath":"cards/原卡.json","sourceRevision":"inspect 返回的版本号","path":"/character_book/entries","offset":0,"limit":30}
 ```
 
-对象/数组返回下一层目录；字符串返回原文 text、总长度和 nextOffset。search 使用原文 query，不执行正则；每个匹配包含 JSON Pointer、字符位置和短上下文。read/search 都校验版本。位置仅供定位，cleanup 仍用唯一原文边界。
+默认 inspect 已展开正文；补读多个叶子字段用 paths，例如 `["/character_book/entries/0/content", "/alternate_greetings/0"]`。对象/数组返回下一层目录；字符串返回原文 text、总长度和 nextOffset。search 使用原文 query，不执行正则；每个匹配包含 JSON Pointer、字符位置和短上下文。read/search 都校验版本。位置仅供定位，cleanup 仍用唯一原文边界。
 
-先 preview，通过后用同样参数 apply。下面的版本号、路径和短片段仅为示例，必须来自 inspect 底稿。复制整卡、清理和安装 MVU 都由工具完成：
+apply 自带预检、保存和磁盘验收；只有需要核对范围时才先 preview。下面的版本号、路径和短片段仅为示例，必须来自 inspect 底稿。复制整卡、清理和安装 MVU 都由工具完成：
 
 ```json
 {
@@ -66,3 +66,5 @@
 - **真实结算**：初值定义通过不代表官方初始化已成功；模板 DOM 模拟使用测试快照，不运行原卡脚本，也不调用模型。完整实测以实际结算回执、持久变量和 UI 为准。
 
 保持一套清晰的变量约束。可扩展集合需要完整模板；已有 Zod 脚本的约束仍需单独核对。后台操作路径相对于 stat_data，例如 `/玩家/位置`，不是 `/stat_data/玩家/位置`。原卡不存在的数值、公式和状态机制不新增。
+
+收尾以 apply.validation 为准，成功后直接报告实际差异和 pending；不重复 validate，不为未授权的真实游玩扩查全局资源。source/target 是生效字段，磁盘包装里的旧镜像不作为转换失败依据。

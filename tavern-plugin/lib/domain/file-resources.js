@@ -495,6 +495,13 @@ export function createFileResourceStore(options = {}) {
 
   // A conversion owns its copy, image and binding as one recoverable mutation.
   // Compare disk snapshots again at publication, never overwrite a same-name card.
+  async function inspectMvuDestination(targetPath) {
+    const target = normalizeResourcePath(targetPath, 'card')
+    const working = await readText(target)
+    const original = await originalCardName(target)
+    return { available: working !== undefined || original === null, workingExists:working !== undefined,
+      originalExists:original !== null, reason:working === undefined && original !== null ? '副本原版资源已存在，请换名' : null }
+  }
   function saveMvuCard({ sourcePath, targetPath, document, expectedSourceText, expectedTargetText, finalize }) {
     const operation = copyTail.then(async () => {
       await ensure()
@@ -966,5 +973,5 @@ export function createFileResourceStore(options = {}) {
     return result
   }
 
-  return Object.freeze({ absolute, copyCard, saveMvuCard, bindMaterial, bindWorldBook, bindWorldBooks, cardsForMaterial, ensure, ensureCardWorkspace, hasCardImage, importCard, importText, importWorldBook, list, metadata, migrateLegacy, readCard, readCardImage, readText, remove, rename: renameResource, replaceScript, restoreCard, scriptBindingsForCards, scriptForCard, unbindMaterial, unbindWorldBook, worldBookBindingForCard, writeWorking })
+  return Object.freeze({ absolute, copyCard, saveMvuCard, inspectMvuDestination, bindMaterial, bindWorldBook, bindWorldBooks, cardsForMaterial, ensure, ensureCardWorkspace, hasCardImage, importCard, importText, importWorldBook, list, metadata, migrateLegacy, readCard, readCardImage, readText, remove, rename: renameResource, replaceScript, restoreCard, scriptBindingsForCards, scriptForCard, unbindMaterial, unbindWorldBook, worldBookBindingForCard, writeWorking })
 }
