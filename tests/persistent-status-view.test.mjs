@@ -139,3 +139,15 @@ test('带原文捕获替换的面板保留求值结果', () => {
   assert.equal(result.statusView.content,content)
   assert.deepEqual(result.projections[0].parts,[])
 })
+
+test('开场模板缓存先于浏览器回执到达时，原文声明仍保留状态栏', () => {
+  const content = '<script>renderStatus()</script>'
+  const rule = { id:'opening-panel',enabled:true,placement:[2],markdownOnly:true,findRegex:'/<mvu-status\\s*\\/>/g',replaceString:content }
+  const message = {role:'assistant',turn:1,greeting:true,text:'开场正文',sourceText:'开场正文\n<mvu-status/>'}
+  const initial = projectPersistentStatusView([message],[projection(1,[{kind:'text',text:'开场正文'},{kind:'html',content}])],{regexScripts:[rule]})
+  const synchronized = projectPersistentStatusView([message],[projection(1,[{kind:'text',text:'模板处理后的正文'}])],{regexScripts:[rule]})
+  assert.equal(synchronized.statusViews.length,1)
+  assert.equal(synchronized.statusView.viewId,initial.statusView.viewId)
+  assert.equal(synchronized.statusView.content,content)
+  assert.equal(projectPersistentStatusView([{...message,sourceText:'没有入口的独立开局页'}],[],{regexScripts:[rule]}).statusView,null)
+})

@@ -53,6 +53,18 @@ function projectStatusView(messages, projections, options, compile) {
           if (/<%|&lt;%/.test(String(rule.replaceString)) || /\$\d+|\$<[^>]+>|\{\{match\}\}/i.test(String(rule.replaceString))) templateContent = resolveDisplayIdentityMacros(contentOf(parts[index]), options)
         }
       }
+      if (!origin && !/<%|&lt;%|\$\d+|\$<[^>]+>|\{\{match\}\}/i.test(String(rule.replaceString))) {
+        // Template synchronization can remove the rendered marker before the
+        // browser's sidebar capture arrives. The authored opening declaration
+        // remains authority; panel lifetime must not depend on that receipt.
+        for (const message of sourceMessages) {
+          if (message.role !== 'assistant' || message.greeting !== true) continue
+          const source = String(message.sourceText ?? message.text ?? '')
+          if (applyTavernRegexText(source, [rule], { placement: 2, isMarkdown: true, isEdit: false, depth: 0 }).changed) {
+            origin = { sourceTurn: Number(message.turn) || 1, sourcePartIndex: 0 }
+          }
+        }
+      }
       if (!origin) {
         for (const message of sourceMessages) {
           const frame = message.displayRuntime?.frames?.find(frame => frame.placement === 'sidebar' && (frame.panelId === viewId || frame.panelId === 'status-' + revision))
