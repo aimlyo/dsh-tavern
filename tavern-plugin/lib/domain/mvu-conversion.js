@@ -6,6 +6,7 @@ import { exportCharacterBook } from './worldbook-resource.js'
 import { validateCardText } from './card-validation.js'
 import { buildMvuArtifacts, isObject, pointerKeys, MVU_CONVERSION_KEY, MVU_MARKER } from './mvu-conversion-artifacts.js'
 import { validateMvuConversion } from './mvu-conversion-validation.js'
+import { catalog, readConversionValue, searchConversionValue, cleanupAudit } from './mvu-conversion-inspection.js'
 
 const clone = value => structuredClone(value)
 const digest = value => createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(value)).digest('hex')
@@ -27,13 +28,24 @@ function outputDigest(document) {
 export function applyMvuCleanup(data, cleanup = []) {
   if (!Array.isArray(cleanup)) throw Error('cleanup 必须是数组')
   const permitted = new Set(['description', 'personality', 'scenario', 'first_mes', 'alternate_greetings', 'mes_example', 'system_prompt', 'post_history_instructions', 'character_book', 'extensions'])
-  function locate(text, anchor, path) {
+  function locate(text, anchor, path, operation, boundary) {
     if (typeof text !== 'string' || typeof anchor !== 'string' || !anchor) throw Error('清理需要非空文字标记: ' + path)
     const start = text.indexOf(anchor)
-    if (start < 0 || text.indexOf(anchor, start + 1) !== -1) throw Error('清理原文必须恰好匹配一次: ' + path)
+    if (start < 0 || text.indexOf(anchor, start + 1) !== -1) {
+      const candidates = []; let matches = 0, position = start
+      while (position >= 0) {
+        matches++
+        if (candidates.length < 5) candidates.push({ offset:position, context:text.slice(Math.max(0,position-40),position+Math.min(anchor.length,120)+40) })
+        position = text.indexOf(anchor, position + 1)
+      }
+      const details = { operation, path, anchor:boundary, matches, candidates,
+        hint: start < 0 ? '按 sourceRevision 读取原卡字段；不要使用副本追加的换行或入口。' : '选择更长的唯一边界；相同结束标签可包含其前方的独特原文。' }
+      const error = new Error('清理原文必须恰好匹配一次: ' + JSON.stringify(details))
+      error.code = 'CLEANUP_ANCHOR_MISMATCH'; error.details = details; throw error
+    }
     return start
   }
-  const edits = cleanup.map(edit => {
+  const edits = cleanup.map((edit, operation) => {
     const keys = pointerKeys(edit.path)
     if (!permitted.has(keys[0]) || (keys[0] === 'extensions' && !['regex_scripts', 'tavern_helper'].includes(keys[1])) || (keys[0] === 'character_book' && keys[1] !== 'entries')) throw Error('清理路径不在允许的内容范围: ' + edit.path)
     if (!['replace', 'remove', 'replaceText', 'replaceBlock'].includes(edit.op)) throw Error('无效清理操作: ' + edit.path)
@@ -50,8 +62,8 @@ export function applyMvuCleanup(data, cleanup = []) {
     let range
     if (edit.op === 'replaceText' || edit.op === 'replaceBlock') {
       if (typeof edit.value !== 'string') throw Error('文字替换 value 必须是字符串: ' + edit.path)
-      const start = locate(before, edit.op === 'replaceText' ? edit.expected : edit.start, edit.path)
-      const end = edit.op === 'replaceText' ? start + edit.expected.length : locate(before, edit.end, edit.path) + edit.end.length
+      const start = locate(before, edit.op === 'replaceText' ? edit.expected : edit.start, edit.path, operation, edit.op === 'replaceText' ? 'expected' : 'start')
+      const end = edit.op === 'replaceText' ? start + edit.expected.length : locate(before, edit.end, edit.path, operation, 'end') + edit.end.length
       if (end <= start || (edit.op === 'replaceBlock' && end - edit.end.length < start + edit.start.length)) throw Error('首尾标记顺序错误或重叠: ' + edit.path)
       range = { start, end }
     } else if (Object.hasOwn(edit, 'expected') && !isDeepStrictEqual(before, edit.expected)) throw Error('清理原值不匹配: ' + edit.path)
@@ -113,27 +125,69 @@ export function createMvuConversion({ resources }) {
   async function inspect(args) {
     const source = await snapshot(args.sourcePath), target = targetFor(source, args.name)
     const existing = await resources.readText(target.path)
+    let existingTarget, targetError
+    try { existingTarget = existing === undefined ? null : cardData(JSON.parse(existing)) }
+    catch { targetError = '目标 JSON 已损坏；请通过资源恢复功能恢复副本后重新 inspect，不直接删除资源文件。' }
+    const metadata = existingTarget?.extensions?.[MVU_CONVERSION_KEY]
     return { sourcePath: source.sourcePath, sourceRevision: source.revision, targetPath: target.path,
-      targetRevision: existing === undefined ? null : digest(existing), card: source.data,
-      existingTarget: existing === undefined ? null : cardData(JSON.parse(existing)),
-      preservedInactiveWorldbook: source.preservedBook ?? null,
-      instruction: '工具从磁盘复制底稿再修改；apply 仅提交版本号、cleanup 和 MVU 定义，无需回传 card。remove 只需路径，replace 只需新值；短片段用 replaceText，长区块用 replaceBlock 首尾标记（含边界）。同字段可提交多个不重叠修改。覆盖已有副本还需 targetRevision。' }
+      targetRevision: existing === undefined ? null : digest(existing),
+      catalog: catalog(source.data),
+      target: existing === undefined ? null : { catalog: existingTarget ? catalog(existingTarget) : [], error: targetError,
+        hasSavedPlan: Array.isArray(metadata?.cleanup), externallyModified: existingTarget ? metadata?.outputDigest !== outputDigest(JSON.parse(existing)) : true },
+      ...(args.detail === 'full' ? {card:source.data, existingTarget, preservedInactiveWorldbook:source.preservedBook ?? null} : {}),
+      capabilities: { customAppearance:false, sharedInitialState:true, openingCount:1+(source.data.alternate_greetings?.length || 0), preservedInactiveWorldbook:!!source.preservedBook },
+      instruction: '用 read/search 按 sourceRevision 读取来源字段；scope=plan 可读已保存方案。apply 默认合并方案：省略的定义及已有清理保留，新清理追加并去重；cleanupResetPaths 先清除指定路径的旧操作。planMode=replace 才整份替换。preview 不落盘。' }
   }
-  async function apply(args) {
+  async function read(args) {
+    const source = await snapshot(args.sourcePath)
+    if (!args.sourceRevision || args.sourceRevision !== source.revision) throw Error('来源或世界书已变化，请重新 inspect')
+    let value = source.data
+    if (args.scope === 'preservedWorldbook') value = source.preservedBook ?? null
+    else if (args.scope === 'target' || args.scope === 'plan') {
+      const target = targetFor(source, args.name), text = await resources.readText(target.path)
+      if (text === undefined || !args.targetRevision || digest(text) !== args.targetRevision) throw Error('目标副本已有变更，请重新 inspect 并提供 targetRevision')
+      const data = cardData(JSON.parse(text))
+      const meta = data.extensions?.[MVU_CONVERSION_KEY]
+      value = args.scope === 'target' ? data : meta ? Object.fromEntries(['initialState','updateRules','displayFields','cleanup'].filter(key=>Object.hasOwn(meta,key)).map(key=>[key,meta[key]])) : null
+    } else if (args.scope && args.scope !== 'source') throw Error('未知读取 scope')
+    return { sourceRevision:source.revision, ...(args.scope === 'target' || args.scope === 'plan' ? {targetRevision:args.targetRevision} : {}),
+      ...(args.action === 'search' ? searchConversionValue(value,args) : readConversionValue(value,args)) }
+  }
+  async function apply(input) {
+    const args = { ...input }
     const source = await snapshot(args.sourcePath), target = targetFor(source, args.name)
     if (!args.sourceRevision || source.revision !== args.sourceRevision) throw Error('来源或世界书已变化，请重新 inspect')
     if (source.data.extensions?.[MVU_CONVERSION_KEY]) throw Error('请以原卡为来源更新现有 MVU 副本，不对转换结果重复转换')
-    const requestHash = digest({ sourceRevision: source.revision, name: target.name, initialState: args.initialState, updateRules: args.updateRules, displayFields: args.displayFields || [], cleanup: args.cleanup || [] })
     const existingText = await resources.readText(target.path)
+    if (args.planMode && !['merge','replace'].includes(args.planMode)) throw Error('planMode 必须为 merge 或 replace')
+    let existing, metadata
     if (existingText !== undefined) {
-      const existing = JSON.parse(existingText), metadata = cardData(existing).extensions?.[MVU_CONVERSION_KEY]
+      try { existing = JSON.parse(existingText) } catch { throw Error('目标 JSON 已损坏，请恢复资源后重新 inspect') }
+      metadata = cardData(existing).extensions?.[MVU_CONVERSION_KEY]
       if (metadata?.sourcePath !== source.sourcePath || metadata.version !== 1) throw Error('目标名称已被其他资源占用，请换名')
+      if (args.planMode !== 'replace') {
+        if (!Array.isArray(metadata.cleanup)) throw Error('旧副本没有保存完整方案；读取来源后以 planMode=replace 提交完整定义和清理')
+        if (metadata.sourceRevision !== source.revision) throw Error('原卡已变化，旧清理路径不能合并；重新读取后以 planMode=replace 提交完整方案')
+        if (metadata.outputDigest !== outputDigest(existing)) throw Error('目标副本已有变更，含方案外修改；读取 scope=target 后将保留修改纳入 planMode=replace 完整方案')
+        const reset = args.cleanupResetPaths ?? []
+        if (!Array.isArray(reset)) throw Error('cleanupResetPaths 必须是路径数组')
+        for (const path of reset) pointerKeys(path)
+        const cleanup = metadata.cleanup.filter(edit => !reset.includes(edit.path))
+        if (args.cleanup !== undefined && !Array.isArray(args.cleanup)) throw Error('cleanup 必须是数组')
+        for (const edit of args.cleanup || []) if (!cleanup.some(old => isDeepStrictEqual(old, edit))) cleanup.push(clone(edit))
+        for (const key of ['initialState','updateRules','displayFields']) if (!Object.hasOwn(args,key)) args[key] = clone(metadata[key])
+        args.cleanup = cleanup
+      }
+    } else if (args.targetRevision) throw Error('目标副本已不存在，请重新 inspect')
+    const requestHash = digest({ sourceRevision:source.revision,name:target.name,initialState:args.initialState,updateRules:args.updateRules,displayFields:args.displayFields || [],cleanup:args.cleanup || [] })
+    if (existingText !== undefined) {
       if (metadata.requestHash === requestHash && metadata.outputDigest === outputDigest(existing)) {
-        const saved = await resources.saveMvuCard({ sourcePath: source.sourcePath, targetPath: target.path, document: existing, expectedSourceText: source.text, expectedTargetText: existingText })
-        return { path: target.path, changed: saved.changed, imageCopied: saved.imageCopied, validation: await verify({ path: target.path }) }
+        if (input.action === 'preview') return {path:target.path,saved:false,changed:false,validation:await verify({path:target.path})}
+        const saved = await resources.saveMvuCard({sourcePath:source.sourcePath,targetPath:target.path,document:existing,expectedSourceText:source.text,expectedTargetText:existingText})
+        return {path:target.path,changed:saved.changed,imageCopied:saved.imageCopied,validation:await verify({path:target.path})}
       }
       if (!args.targetRevision || args.targetRevision !== digest(existingText)) throw Error('目标副本已有变更，请重新 inspect 并提供 targetRevision')
-    } else if (args.targetRevision) throw Error('目标副本已不存在，请重新 inspect')
+    }
     const artifacts = buildMvuArtifacts(args)
     const data = applyMvuCleanup(clone(source.data), args.cleanup)
     data.name = target.name
@@ -161,11 +215,15 @@ export function createMvuConversion({ resources }) {
     // The storage layer supplies a fresh workspace ID on first creation.
     if (document.meta) document.meta = { ...document.meta, id: existingText ? JSON.parse(existingText).meta?.id : undefined }
     destination.extensions[MVU_CONVERSION_KEY] = { version: 1, sourcePath: source.sourcePath, sourceRevision: source.revision, requestHash,
-      initialState: clone(args.initialState), updateRules: args.updateRules, displayFields: clone(args.displayFields || []),
+      initialState: clone(args.initialState), updateRules: args.updateRules, displayFields: clone(args.displayFields || []), cleanup: clone(args.cleanup || []),
       ...(source.preservedBook ? { preservedWorldbook: source.preservedBook } : {}) }
     const staticCheck = validateCardText(JSON.stringify(document))
     if (!staticCheck.valid) throw Error('成品校验失败: ' + JSON.stringify(staticCheck.errors))
     const check = await validateMvuConversion(data)
+    const audit = cleanupAudit(source.data,args.cleanup || [],data)
+    check.checks.push(audit.check); check.changes = audit.changes; check.removedEntries = audit.removedEntries; check.preservedEntries = audit.preservedEntries; check.valid &&= audit.check.status === 'passed'
+    check.pending.push('原卡语义与未识别旧协议需按 changes 清单确认；多开场共享初值，自定义外观未迁移')
+    if (input.action === 'preview') return {path:target.path,saved:false,validation:check}
     if (!check.valid) throw Error('转换预检失败: ' + JSON.stringify(check.checks.filter(item => item.status === 'failed')))
     if ((await snapshot(source.sourcePath)).revision !== source.revision) throw Error('转换期间来源发生变化，请重新 inspect')
     const saved = await resources.saveMvuCard({ sourcePath: source.sourcePath, targetPath: target.path, document, expectedSourceText: source.text, expectedTargetText: existingText, finalize: output => { cardData(output).extensions[MVU_CONVERSION_KEY].outputDigest = outputDigest(output) } })
@@ -176,7 +234,23 @@ export function createMvuConversion({ resources }) {
     if (text === undefined) throw Error('人物卡不存在')
     const format = validateCardText(text)
     if (!format.valid) return { valid: false, checks: [{ name: 'format', status: 'failed', detail: JSON.stringify(format.errors) }] }
-    const result = await validateMvuConversion(cardData(JSON.parse(text)))
+    const document = JSON.parse(text), data = cardData(document)
+    const result = await validateMvuConversion(data)
+    const meta = data.extensions?.[MVU_CONVERSION_KEY]
+    if (Array.isArray(meta?.cleanup)) {
+      const intact = meta.outputDigest === outputDigest(document)
+      result.checks.push({name:'planIntegrity',status:intact ? 'passed' : 'failed',detail:intact ? '成品与保存方案一致，未发现方案外修改' : '成品存在方案外修改，需重新纳入转换方案'})
+      result.valid &&= intact
+      try {
+        const source = await snapshot(meta.sourcePath)
+        if (source.revision !== meta.sourceRevision) throw Error('来源已变化，无法核对原转换底稿')
+        const audit = cleanupAudit(source.data,meta.cleanup,data)
+        result.changes = audit.changes; result.removedEntries = audit.removedEntries; result.preservedEntries = audit.preservedEntries; result.checks.push(audit.check); result.valid &&= audit.check.status === 'passed'
+      } catch (error) {
+        result.checks.push({name:'sourceAudit',status:'failed',detail:error.message}); result.valid = false
+      }
+    } else result.pending.push('旧副本未保存完整转换方案，无法核对清理清单与方案外修改')
+    result.pending.push('核对 changes 的删除条目及剧情语义；多开场共用初值，自定义外观未迁移')
     const binding = await resources.worldBookBindingForCard(path)
     const bound = binding.kind === 'embedded' && binding.cardPath === path
     result.checks.unshift({ name: 'binding', status: bound ? 'passed' : 'failed', detail: bound ? '副本绑定自己的世界书' : '副本未绑定自己的世界书' })
@@ -185,7 +259,8 @@ export function createMvuConversion({ resources }) {
   }
   function convert(args) {
     if (args.action === 'inspect') return inspect(args)
-    if (args.action !== 'apply') throw Error('action 必须为 inspect 或 apply')
+    if (args.action === 'read' || args.action === 'search') return read(args)
+    if (!['apply','preview'].includes(args.action)) throw Error('action 必须为 inspect/read/search/preview/apply')
     const job = tail.then(() => apply(args)); tail = job.catch(() => {}); return job
   }
   return { convert, verify }

@@ -17,7 +17,7 @@ async function fixture(t, options={}) {
   const resources=createFileResourceStore({dataRoot,...options}); await resources.ensure()
   const sourcePath=await resources.importCard({name:'旅人.json',text:JSON.stringify(original())},original())
   const conversion=createMvuConversion({resources})
-  const inspect=()=>conversion.convert({action:'inspect',sourcePath})
+  const inspect=()=>conversion.convert({action:'inspect',sourcePath,detail:'full'})
   const apply=async extra=>conversion.convert({action:'apply',sourcePath,...definition(),...(await inspect()),...extra})
   return {resources,sourcePath,conversion,inspect,apply}
 }
@@ -51,7 +51,7 @@ test('改定义更新同一副本；目标版本保护手工改动',async t=>{
   const changed=await f.resources.readCard(first.path);cardData(changed).description='手工改动'
   await f.resources.writeWorking(first.path,JSON.stringify(changed))
   await assert.rejects(f.conversion.convert({action:'apply',sourcePath:f.sourcePath,...definition(),...old}),/目标副本已有变更/)
-  const next=await f.apply({initialState:{玩家:{位置:'大厅'},人物:{}},displayFields:[]})
+  const next=await f.apply({planMode:'replace',initialState:{玩家:{位置:'大厅'},人物:{}},displayFields:[]})
   assert.equal(next.path,first.path);assert.equal(next.validation.valid,true)
   assert.equal(cardData(await f.resources.readCard(next.path)).character_book.entries.length,3)
 })
@@ -196,6 +196,11 @@ test('专用工具使用真实 DSH 参数/输出定义', {skip:!process.env.DSH_
   registerMvuConversionTools({defineTool,tools:{register:tool=>registered.set(tool.name,tool)},conversion:f.conversion,chatForSession:async()=>({mode:'card'})})
   const tool=registered.get('tavern_convert_to_mvu'), exec={agent:{session:{id:'test'}}}
   const {report:inspection}=await tool.execute({action:'inspect',sourcePath:f.sourcePath},exec)
+  const {report:page}=await tool.execute({action:'read',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,path:'/first_mes',offset:0,limit:4},exec)
+  assert.equal(page.text,original().data.first_mes.slice(0,4))
+  const {report:preview}=await tool.execute({action:'preview',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,...definition()},exec)
+  assert.equal(preview.saved,false);assert.equal(preview.validation.valid,true)
+  assert.equal((await f.resources.list('card')).length,1)
   const {report:result}=await tool.execute({action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,...definition(),cleanup:[...definition().cleanup,{op:'remove',path:'/character_book/entries/0'}]},exec)
   assert.equal(result.validation.valid,true)
   const validation=await registered.get('tavern_validate_mvu_conversion').execute({path:result.path},exec)
@@ -251,4 +256,148 @@ test('区块边界不唯一、倒置及范围重叠都整批拒绝，旧 expecte
     assert.throws(() => applyMvuCleanup(data, [{op:'replace',path:'/scenario',value:'新场景'},...cleanup]))
     assert.deepEqual(data, before)
   }
+})
+
+test('增量修订持久方案：只补清理不恢复旧正则，重启后仍可重试', async t => {
+  const f = await fixture(t)
+  const first = await f.apply({cleanup:[...definition().cleanup,{op:'remove',path:'/extensions/regex_scripts/0'}]})
+  const conversion = createMvuConversion({resources:f.resources})
+  const inspection = await conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  const input = {action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,targetRevision:inspection.targetRevision,
+    cleanup:[{op:'replaceText',path:'/first_mes',expected:'门口',value:'入口'}]}
+  const next = await conversion.convert(input)
+  assert.equal(next.path,first.path)
+  const data = cardData(await f.resources.readCard(next.path))
+  assert.equal(data.description,'保留的故事。')
+  assert.equal(data.extensions.regex_scripts.some(r=>r.id==='unrelated'),false)
+  assert.match(data.first_mes,/入口/)
+  assert.equal(data.extensions[MVU_CONVERSION_KEY].cleanup.length,3)
+  assert.equal((await conversion.convert(input)).changed,false)
+})
+
+test('清理定位报告区分缺失、重复边界，保留原始换行且整批不写入', () => {
+  const data={first_mes:'正文\r\n<人物>A</人物><地点>甲</地点><人物>B</人物><地点>乙</地点>'}
+  assert.throws(()=>applyMvuCleanup(data,[{op:'replaceBlock',path:'/first_mes',start:'<人物>A',end:'</地点>',value:''}]),error=>{
+    assert.equal(error.code,'CLEANUP_ANCHOR_MISMATCH')
+    assert.equal(error.details.operation,0)
+    assert.equal(error.details.anchor,'end')
+    assert.equal(error.details.matches,2)
+    assert.equal(error.details.candidates.length,2)
+    return true
+  })
+  assert.match(data.first_mes,/正文\r\n/)
+})
+
+test('默认检查仅返回目录；版本绑定的按需读取和搜索支持换行及多开场',async t=>{
+  const f=await fixture(t), inspection=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  assert.equal(inspection.card,undefined)
+  assert.ok(inspection.catalog.some(x=>x.path==='/first_mes'))
+  const read=await f.conversion.convert({action:'read',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,path:'/first_mes',offset:1,limit:3})
+  assert.equal(read.text,original().data.first_mes.slice(1,4))
+  const search=await f.conversion.convert({action:'search',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,query:'入口'})
+  assert.ok(search.matches.some(x=>x.path==='/alternate_greetings/0'))
+  const doc=await f.resources.readCard(f.sourcePath);cardData(doc).scenario='已改变'
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc))
+  await assert.rejects(f.conversion.convert({action:'read',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,path:'/first_mes'}),/已变化/)
+})
+
+test('验收报告真实删除项目，检查旧渲染协议残留及手工修改',async t=>{
+  const f=await fixture(t), doc=await f.resources.readCard(f.sourcePath), data=cardData(doc)
+  data.first_mes+='\n<旧状态>旧值</旧状态>'
+  data.extensions.regex_scripts.push({id:'legacy',findRegex:'<旧状态>(.*?)</旧状态>',replaceString:'<div>$1</div>',placement:[2]})
+  data.character_book.entries.push({id:8,comment:'剧情选择点',content:'保留分支',enabled:false})
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc))
+  const plan={...definition(),cleanup:[...definition().cleanup,{op:'remove',path:'/extensions/regex_scripts/1'}]}
+  const preview=await f.conversion.convert({action:'preview',sourcePath:f.sourcePath,...await f.inspect(),...plan})
+  assert.equal(preview.validation.checks.find(x=>x.name==='legacyResidue').status,'failed')
+  assert.equal((await f.resources.list('card')).length,1)
+  await assert.rejects(f.apply(plan),/旧渲染协议残留/)
+  plan.cleanup.push({op:'replaceBlock',path:'/first_mes',start:'<旧状态>',end:'</旧状态>',value:''},{op:'remove',path:'/character_book/entries/1'})
+  const result=await f.apply(plan)
+  assert.ok(result.validation.changes.some(x=>x.path==='/character_book/entries/1'&&x.label==='剧情选择点'&&x.enabled===false))
+  const copy=await f.resources.readCard(result.path);cardData(copy).scenario='非方案修改'
+  await f.resources.writeWorking(result.path,JSON.stringify(copy))
+  const check=await f.conversion.verify({path:result.path})
+  assert.equal(check.checks.find(x=>x.name==='planIntegrity').status,'failed')
+})
+
+test('纠正方案路径、显式完整替换和版本冲突均不丢失非目标内容',async t=>{
+  const f=await fixture(t)
+  const first=await f.apply({cleanup:[...definition().cleanup,{op:'replaceText',path:'/first_mes',expected:'门口',value:'门外'}]})
+  const inspection=await f.inspect()
+  const input={action:'apply',sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,targetRevision:inspection.targetRevision,
+    cleanupResetPaths:['/first_mes'],cleanup:[{op:'replaceText',path:'/first_mes',expected:'门口',value:'大厅'}]}
+  const changed=await f.conversion.convert(input)
+  let data=cardData(await f.resources.readCard(changed.path))
+  assert.match(data.first_mes,/大厅/);assert.doesNotMatch(data.first_mes,/门外/)
+  assert.equal(data.description,'保留的故事。')
+  assert.equal(data.creator,'作者');assert.deepEqual(data.extensions.custom,{keep:true})
+  assert.equal((await f.conversion.convert(input)).changed,false)
+  await assert.rejects(f.conversion.convert({...input,cleanup:[{op:'replaceText',path:'/first_mes',expected:'门口',value:'别处'}]}),/目标副本已有变更/)
+  const reset=await f.conversion.convert({action:'apply',sourcePath:f.sourcePath,...await f.inspect(),planMode:'replace',...definition()})
+  data=cardData(await f.resources.readCard(reset.path))
+  assert.match(data.first_mes,/门口/);assert.equal(reset.path,first.path)
+})
+
+test('新来源不能套用旧清理；旧版副本需要明确补齐完整方案',async t=>{
+  const f=await fixture(t), result=await f.apply()
+  let source=await f.resources.readCard(f.sourcePath);cardData(source).scenario='新增背景'
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(source))
+  await assert.rejects(f.conversion.convert({action:'apply',sourcePath:f.sourcePath,...await f.inspect(),cleanup:[]}),/旧清理路径不能合并/)
+  await f.apply({planMode:'replace'})
+  const doc=await f.resources.readCard(result.path);delete cardData(doc).extensions[MVU_CONVERSION_KEY].cleanup
+  await f.resources.writeWorking(result.path,JSON.stringify(doc))
+  await assert.rejects(f.conversion.convert({action:'apply',sourcePath:f.sourcePath,...await f.inspect()}),/旧副本没有保存完整方案/)
+  assert.equal((await f.apply({planMode:'replace'})).validation.valid,true)
+})
+
+test('大卡与已有副本目录保持简短，按需分页不丢换行且可读取保存方案',async t=>{
+  const f=await fixture(t), doc=await f.resources.readCard(f.sourcePath)
+  cardData(doc).scenario='长文\r\n'.repeat(30000)
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc));await f.apply()
+  const inspection=await f.conversion.convert({action:'inspect',sourcePath:f.sourcePath})
+  assert.ok(JSON.stringify(inspection).length<8000)
+  const args={sourcePath:f.sourcePath,sourceRevision:inspection.sourceRevision,targetRevision:inspection.targetRevision}
+  const page=await f.conversion.convert({...args,action:'read',path:'/scenario',limit:8})
+  const next=await f.conversion.convert({...args,action:'read',path:'/scenario',offset:page.nextOffset,limit:8})
+  assert.equal(page.text+next.text,cardData(doc).scenario.slice(0,16))
+  const plan=await f.conversion.convert({...args,action:'read',scope:'plan',path:'/cleanup'})
+  assert.equal(plan.catalog[0].path,'/cleanup/0')
+  const search=await f.conversion.convert({...args,action:'search',query:'长文',limit:2})
+  assert.equal(search.matches.length,2);assert.equal(search.total,30000)
+  assert.equal(search.nextOffset,2)
+  await assert.rejects(f.conversion.convert({...args,action:'read',scope:'target',targetRevision:'wrong',path:'/first_mes'}),/目标副本已有变更/)
+})
+
+test('非目标格式正则保留，不因包含标签而被误判为旧状态栏',async t=>{
+  const f=await fixture(t), doc=await f.resources.readCard(f.sourcePath), data=cardData(doc)
+  data.first_mes+='\n<对话>你好</对话>'
+  data.extensions.regex_scripts.push({id:'dialogue',findRegex:'<对话>(.*?)</对话>',replaceString:'<b>$1</b>',placement:[2],markdownOnly:true})
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc))
+  const result=await f.apply()
+  assert.equal(result.validation.valid,true)
+  assert.ok(cardData(await f.resources.readCard(result.path)).extensions.regex_scripts.some(r=>r.id==='dialogue'))
+})
+
+test('工具返回结构化定位错误，preview 和 apply 均不保存失败清理',async t=>{
+  const f=await fixture(t), registered=new Map()
+  registerMvuConversionTools({tools:{register:x=>registered.set(x.name,x)},defineTool:x=>x,conversion:f.conversion,chatForSession:async()=>({mode:'card'})})
+  const tool=registered.get('tavern_convert_to_mvu')
+  for(const action of ['preview','apply']){
+    const {report}=await tool.execute({action,sourcePath:f.sourcePath,...await f.inspect(),...definition(),cleanup:[{op:'replaceText',path:'/first_mes',expected:'错误片段',value:''}]},{})
+    assert.equal(report.ok,false);assert.equal(report.error.code,'CLEANUP_ANCHOR_MISMATCH')
+    assert.equal(report.error.matches,0);assert.equal(report.error.anchor,'expected')
+  }
+  assert.equal((await f.resources.list('card')).length,1)
+})
+
+test('替换整个世界书数组仍列出实际误删的禁用剧情条目',async t=>{
+  const f=await fixture(t), doc=await f.resources.readCard(f.sourcePath)
+  cardData(doc).character_book.entries.push({id:8,comment:'禁用的剧情分支',content:'分支设定',enabled:false})
+  await f.resources.writeWorking(f.sourcePath,JSON.stringify(doc))
+  const inspection=await f.inspect()
+  const result=await f.apply({cleanup:[...definition().cleanup,{op:'replace',path:'/character_book/entries',value:[inspection.card.character_book.entries[0]]}]})
+  assert.ok(result.validation.removedEntries.some(x=>x.label==='禁用的剧情分支'&&x.enabled===false))
+  assert.ok(result.validation.preservedEntries.some(x=>x.label==='原设定'))
+  assert.equal(result.validation.preservedEntries.some(x=>x.label==='禁用的剧情分支'),false)
 })
